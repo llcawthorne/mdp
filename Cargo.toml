@@ -3,7 +3,7 @@ name = "mdp"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.88.0"
-description = "A GitHub-styled Markdown previewer and PDF generator"
+description = "A GitHub-styled Markdown previewer and PDF/EPUB generator"
 license = "MIT"
 repository = "https://github.com/llcawthorne/mdp"
 
@@ -31,6 +31,7 @@ syntect = { version = "5.2", default-features = false, features = ["default-fanc
 tempfile = "3.27.0"
 tokio = { version = "1.53.3", features = ["macros", "rt-multi-thread", "net", "time", "sync", "fs", "io-util"] }
 url = "2.5"
+zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [[test]]
 name = "testsuite"

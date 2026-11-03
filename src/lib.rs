@@ -1,5 +1,5 @@
-//! `mdp` renders Markdown files as self-contained, GitHub-styled HTML pages or
-//! PDFs and opens them in a browser.
+//! `mdp` renders Markdown files as self-contained, GitHub-styled HTML pages,
+//! PDFs, or EPUBs and opens them in a browser or viewer.
 //!
 //! # Architecture
 //!
@@ -22,12 +22,15 @@
 //!   table of contents generation, and [`handlebars`] template rendering.
 //! - [`pdf`]: Headless Chromium PDF export with document outlines and OS dark-mode
 //!   detection.
+//! - [`epub`]: EPUB 3 e-book packaging with XHTML content, embedded styles, and
+//!   navigation table of contents.
 //! - [`watch`]: Live-reloading local HTTP server (`--watch`) built on [`axum`]
 //!   and [`tokio`] with Server-Sent Events (SSE).
 
 #![warn(missing_docs)]
 
 pub mod assets;
+pub mod epub;
 pub mod github;
 pub mod links;
 pub mod pdf;
@@ -73,10 +76,12 @@ pub struct Config {
     /// Serve a live-reloading local HTTP preview (`--watch` / `-w`).
     pub watch: bool,
     /// Explicit output file path (`--output` / `-o`), or `None` for a temporary file
-    /// (HTML) or sibling `.pdf` file (PDF).
+    /// (HTML) or sibling `.pdf` / `.epub` file.
     pub output: Option<PathBuf>,
     /// Export a PDF using headless Chrome (`--pdf` / `-p`, or `-o *.pdf`).
     pub pdf: bool,
+    /// Export an EPUB e-book (`--epub` / `-e`, or `-o *.epub`).
+    pub epub: bool,
     /// Rendering options passed to [`parse_content`].
     pub opts: Options,
 }
@@ -85,7 +90,7 @@ pub struct Config {
 #[derive(Debug, Parser)]
 #[command(
     name = "mdp",
-    about = "Render Markdown files as GitHub-styled HTML pages or PDFs",
+    about = "Render Markdown files as GitHub-styled HTML pages, PDFs, or EPUBs",
     version
 )]
 struct Cli {
@@ -101,13 +106,17 @@ struct Cli {
     #[arg(short = 'w', long = "watch")]
     watch: bool,
 
-    /// Write to FILE instead of a temp file (a .pdf name implies --pdf).
+    /// Write to FILE instead of a temp file (a .pdf or .epub name implies --pdf or --epub).
     #[arg(short = 'o', long = "output", value_name = "FILE")]
     output: Option<PathBuf>,
 
     /// Make a PDF using headless Chrome; goes beside FILE unless -o says otherwise.
     #[arg(short = 'p', long = "pdf")]
     pdf: bool,
+
+    /// Make an EPUB e-book; goes beside FILE unless -o says otherwise.
+    #[arg(short = 'e', long = "epub")]
+    epub: bool,
 
     /// Use dark colors instead of following the OS.
     #[arg(short = 'd', long = "dark")]
@@ -155,17 +164,22 @@ where
     }
 
     let mut pdf = cli.pdf;
+    let mut epub = cli.epub;
     if let Some(ref out_path) = cli.output
-        && out_path
-            .extension()
-            .and_then(|e| e.to_str())
-            .is_some_and(|e| e.eq_ignore_ascii_case("pdf"))
+        && let Some(ext) = out_path.extension().and_then(|e| e.to_str())
     {
-        pdf = true;
+        if ext.eq_ignore_ascii_case("pdf") {
+            pdf = true;
+        } else if ext.eq_ignore_ascii_case("epub") {
+            epub = true;
+        }
     }
 
-    if cli.watch && (pdf || cli.output.is_some()) {
-        bail!("--watch can't be used with --output or --pdf");
+    if pdf && epub {
+        bail!("--pdf and --epub can't be used together");
+    }
+    if cli.watch && (pdf || epub || cli.output.is_some()) {
+        bail!("--watch can't be used with --output, --pdf, or --epub");
     }
     if cli.dark && cli.light {
         bail!("--dark and --light can't be used together");
@@ -206,6 +220,7 @@ where
         watch: cli.watch,
         output: cli.output,
         pdf,
+        epub,
         opts: Options {
             toc: cli.toc,
             theme,
@@ -216,11 +231,15 @@ where
     })
 }
 
-/// Executes the one-shot HTML or PDF rendering pipeline for `cfg` and writes the
-/// resulting output file path to `out`.
+/// Executes the one-shot HTML, PDF, or EPUB rendering pipeline for `cfg` and
+/// writes the resulting output file path to `out`.
 pub fn run(cfg: &Config, out: &mut dyn Write) -> Result<()> {
     let input = fs::read(&cfg.filename)
         .with_context(|| format!("failed to read {}", cfg.filename.display()))?;
+
+    if cfg.epub {
+        return epub::run_epub(cfg, &input, out);
+    }
 
     let mut opts = cfg.opts.clone();
     if cfg.pdf {

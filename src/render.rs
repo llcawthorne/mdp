@@ -36,7 +36,8 @@ use std::sync::LazyLock;
 const PAGE_TEMPLATE: &str = include_str!("../assets/page.hbs");
 
 /// Characters percent-encoded when building `#fragment` hrefs in the TOC.
-const FRAGMENT_ENCODE_SET: &AsciiSet = &CONTROLS.add(b' ').add(b'"').add(b'<').add(b'>').add(b'`');
+pub(crate) const FRAGMENT_ENCODE_SET: &AsciiSet =
+    &CONTROLS.add(b' ').add(b'"').add(b'<').add(b'>').add(b'`');
 
 /// Template context serialized into `assets/page.hbs`.
 #[derive(Serialize)]
@@ -57,11 +58,24 @@ struct PageContext<'a> {
 
 /// A heading collected during the Markdown pass for the table of contents and page title.
 #[derive(Debug, Clone)]
-struct HeadingEntry {
-    level: u8,
-    id: String,
-    toc_title: String,
-    full_text: String,
+pub(crate) struct HeadingEntry {
+    pub(crate) level: u8,
+    pub(crate) id: String,
+    pub(crate) toc_title: String,
+    pub(crate) full_text: String,
+}
+
+/// Intermediate rendered document components shared between HTML and EPUB output.
+pub(crate) struct RenderedDocument {
+    pub(crate) title: String,
+    pub(crate) css: String,
+    pub(crate) styles: Vec<CodeStyle>,
+    pub(crate) code_style: String,
+    pub(crate) toc: Option<String>,
+    pub(crate) headings: Vec<HeadingEntry>,
+    pub(crate) body: String,
+    pub(crate) uses_math: bool,
+    pub(crate) uses_mermaid: bool,
 }
 
 /// Lazily initialized [`ammonia::Builder`] configured to match GitHub's allowed HTML subset.
@@ -112,6 +126,37 @@ static HANDLEBARS: LazyLock<Handlebars<'static>> = LazyLock::new(|| {
 /// top-level `#` heading, and its parent directory is used to resolve relative
 /// links and local images.
 pub fn parse_content(input: &[u8], filename: &Path, opts: &Options) -> Result<Vec<u8>> {
+    let doc = render_document(input, filename, opts)?;
+    let toc_open = opts.toc && doc.toc.is_some();
+
+    let ctx = PageContext {
+        title: doc.title,
+        theme: opts.theme.as_str(),
+        is_dark: opts.theme == Theme::Dark,
+        css: doc.css,
+        styles: doc.styles,
+        code_style: doc.code_style,
+        toc: doc.toc,
+        toc_open,
+        body: doc.body,
+        katex_css: doc.uses_math.then(katex_css),
+        katex_js: doc.uses_math.then(katex_js),
+        mermaid_js: doc.uses_mermaid.then(mermaid_js),
+    };
+
+    let page = HANDLEBARS
+        .render("page", &ctx)
+        .context("failed to render page template")?;
+    Ok(page.into_bytes())
+}
+
+/// Renders `input` Markdown bytes into its structured document components
+/// (title, CSS stylesheet, TOC, headings, and sanitized HTML body).
+pub(crate) fn render_document(
+    input: &[u8],
+    filename: &Path,
+    opts: &Options,
+) -> Result<RenderedDocument> {
     let markdown = std::str::from_utf8(input).context("Markdown file is not valid UTF-8")?;
     let (front_matter_html, body_md) = extract_front_matter(markdown);
 
@@ -126,7 +171,6 @@ pub fn parse_content(input: &[u8], filename: &Path, opts: &Options) -> Result<Ve
     let (choices, selected) = code_styles(opts);
     let css = stylesheet(&choices)?;
     let toc_html = render_toc(&rendered.headings);
-    let toc_open = opts.toc && toc_html.is_some();
 
     let page_title = rendered
         .headings
@@ -140,25 +184,17 @@ pub fn parse_content(input: &[u8], filename: &Path, opts: &Options) -> Result<Ve
                 .unwrap_or_else(|| String::from("mdp"))
         });
 
-    let ctx = PageContext {
+    Ok(RenderedDocument {
         title: page_title,
-        theme: opts.theme.as_str(),
-        is_dark: opts.theme == Theme::Dark,
         css,
         styles: choices,
         code_style: selected,
         toc: toc_html,
-        toc_open,
+        headings: rendered.headings,
         body: rendered.html,
-        katex_css: rendered.uses_math.then(katex_css),
-        katex_js: rendered.uses_math.then(katex_js),
-        mermaid_js: rendered.uses_mermaid.then(mermaid_js),
-    };
-
-    let page = HANDLEBARS
-        .render("page", &ctx)
-        .context("failed to render page template")?;
-    Ok(page.into_bytes())
+        uses_math: rendered.uses_math,
+        uses_mermaid: rendered.uses_mermaid,
+    })
 }
 
 /// Output of the Markdown-to-HTML event pass before page-template wrapping.
