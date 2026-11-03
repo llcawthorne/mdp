@@ -1,11 +1,14 @@
 //! Unit and integration tests for CLI argument parsing (`parse_args`), `run`,
 //! themes, syntax styles, TOC generation, PDF paths, and heading slugs.
 
+use mdp::epub::epub_path;
 use mdp::pdf::{find_chrome, pdf_path, pdf_theme_with};
 use mdp::style::{available_styles, known_style};
 use mdp::{Config, Options, Theme, parse_args, parse_content, run, slug};
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
+use zip::{CompressionMethod, ZipArchive};
 
 const INPUT_FILE: &str = "testdata/test1.md";
 
@@ -171,7 +174,19 @@ fn parse_args_flags_and_validation() {
     // .PDF output implies --pdf
     let got = parse_args(["--output", "notes.PDF", "a.md"], &mut stderr).expect("pdf output");
     assert!(got.pdf);
+    assert!(!got.epub);
     assert_eq!(got.output, Some(PathBuf::from("notes.PDF")));
+
+    // -e / --epub and .EPUB output implies --epub
+    let got = parse_args(["-e", "a.md"], &mut stderr).expect("-e flag");
+    assert!(got.epub);
+    assert!(!got.pdf);
+
+    let got =
+        parse_args(["--output", "book-name.EPUB", "a.md"], &mut stderr).expect("epub output");
+    assert!(got.epub);
+    assert!(!got.pdf);
+    assert_eq!(got.output, Some(PathBuf::from("book-name.EPUB")));
 
     // --dark-style override
     let got = parse_args(
@@ -188,6 +203,9 @@ fn parse_args_flags_and_validation() {
         (&["a.md", "b.md"], "exactly one"),
         (&["-w", "-o", "x.html", "a.md"], "--watch can't"),
         (&["-wp", "a.md"], "--watch can't"),
+        (&["-we", "a.md"], "--watch can't"),
+        (&["-pe", "a.md"], "--pdf and --epub"),
+        (&["-p", "-o", "book.epub", "a.md"], "--pdf and --epub"),
         (&["-d", "-l", "a.md"], "together"),
         (&["--style", "nope", "a.md"], r#"unknown style "nope""#),
         (&["--dark-style", "nope", "a.md"], r#"unknown style "nope""#),
@@ -349,6 +367,116 @@ fn pdf_path_replaces_extension() {
 }
 
 #[test]
+fn epub_path_replaces_extension() {
+    assert_eq!(
+        epub_path(Path::new("notes.md")),
+        PathBuf::from("notes.epub")
+    );
+    assert_eq!(
+        epub_path(Path::new("dir/book.markdown")),
+        PathBuf::from("dir/book.epub")
+    );
+    assert_eq!(epub_path(Path::new("README")), PathBuf::from("README.epub"));
+}
+
+#[test]
+fn run_makes_epub() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let md_path = dir.path().join("notes.md");
+    fs::write(
+        &md_path,
+        "# Book Title\n\nIntro paragraph.\n\n---\n\n## Tasks\n\n- [x] Done\n",
+    )
+    .expect("write notes.md");
+
+    // 1. Default output path (`-e` without `-o` writes `notes.epub` beside `notes.md`)
+    let mut out = Vec::new();
+    let cfg = Config {
+        filename: md_path.clone(),
+        epub: true,
+        skip_preview: true,
+        ..Config::default()
+    };
+    run(&cfg, &mut out).expect("run --epub default path");
+    let default_epub = dir.path().join("notes.epub");
+    assert_eq!(
+        String::from_utf8(out).unwrap().trim(),
+        default_epub.to_string_lossy()
+    );
+    assert!(default_epub.is_file());
+
+    // 2. Explicit `-o book-name.epub`
+    let epub_name = dir.path().join("book-name.epub");
+    let mut out = Vec::new();
+    let cfg = Config {
+        filename: md_path,
+        output: Some(epub_name.clone()),
+        epub: true,
+        skip_preview: true,
+        ..Config::default()
+    };
+
+    run(&cfg, &mut out).expect("run --epub explicit path");
+    assert_eq!(
+        String::from_utf8(out).unwrap().trim(),
+        epub_name.to_string_lossy()
+    );
+
+    let file = fs::File::open(&epub_name).expect("open generated EPUB");
+    let mut archive = ZipArchive::new(file).expect("valid ZIP archive");
+
+    // Per the EPUB OCF spec, entry 0 must be `mimetype`, stored uncompressed
+    {
+        let mut first = archive.by_index(0).expect("first ZIP entry");
+        assert_eq!(first.name(), "mimetype");
+        assert_eq!(first.compression(), CompressionMethod::Stored);
+        let mut mime = String::new();
+        first.read_to_string(&mut mime).expect("read mimetype");
+        assert_eq!(mime, "application/epub+zip");
+    }
+
+    let read_entry = |archive: &mut ZipArchive<fs::File>, name: &str| -> String {
+        let mut entry = archive
+            .by_name(name)
+            .unwrap_or_else(|e| panic!("missing EPUB entry {name}: {e}"));
+        let mut text = String::new();
+        entry.read_to_string(&mut text).expect("UTF-8 EPUB entry");
+        text
+    };
+
+    let container = read_entry(&mut archive, "META-INF/container.xml");
+    assert!(container.contains(r#"full-path="EPUB/package.opf""#));
+
+    let opf = read_entry(&mut archive, "EPUB/package.opf");
+    assert!(opf.contains("<dc:title>Book Title</dc:title>"));
+    assert!(opf.contains(r#"href="nav.xhtml""#));
+    assert!(opf.contains(r#"href="content.xhtml""#));
+
+    let style = read_entry(&mut archive, "EPUB/style.css");
+    assert!(style.contains(".markdown-body"));
+
+    let nav = read_entry(&mut archive, "EPUB/nav.xhtml");
+    assert!(nav.contains(r#"epub:type="toc""#));
+    assert!(nav.contains(r#"href="content.xhtml#book-title""#));
+    assert!(nav.contains(r#"href="content.xhtml#tasks""#));
+
+    let content = read_entry(&mut archive, "EPUB/content.xhtml");
+    assert!(content.contains("Book Title"));
+    assert!(
+        content.contains("<hr />"),
+        "void <hr> tag should be self-closed in XHTML"
+    );
+    assert!(
+        !content.contains("<hr>"),
+        "unclosed <hr> tag found in XHTML"
+    );
+    assert!(
+        content.contains(r#"<input disabled="" type="checkbox" checked="" />"#),
+        "void <input> tag should be self-closed in XHTML: {content}"
+    );
+}
+
+#[test]
 fn run_makes_pdf() {
     if find_chrome().is_err() {
         return;
@@ -401,4 +529,3 @@ fn pdf_theme_respects_preference_or_os() {
     assert_eq!(pdf_theme_with(Theme::Light, || true), Theme::Light);
     assert_eq!(pdf_theme_with(Theme::Dark, || false), Theme::Dark);
 }
-

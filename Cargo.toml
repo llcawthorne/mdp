@@ -6,7 +6,7 @@ version = "0.1.0"
 # lifetime capture rules (`use<...>` in `impl Trait`).
 edition = "2024"
 rust-version = "1.88.0"
-description = "A GitHub-styled Markdown previewer and PDF generator"
+description = "A GitHub-styled Markdown previewer and PDF/EPUB generator"
 license = "MIT"
 repository = "https://github.com/llcawthorne/mdp"
 
@@ -104,6 +104,12 @@ tokio = { version = "1.53.3", features = ["macros", "rt-multi-thread", "net", "t
 
 # WHATWG URL parser and `Url::from_file_path` builder for headless Chrome `file://` URLs.
 url = "2.5"
+
+# ZIP archive reader and writer used in `epub.rs` to package EPUB 3 Open
+# Container Format (`.epub`) archives in memory (`default-features = false`
+# with `features = ["deflate"]` avoids pulling in bzip2/zstd/xz C dependencies,
+# reusing the pure-Rust deflate implementation already in the dependency tree).
+zip = { version = "2", default-features = false, features = ["deflate"] }
 
 # Single-binary integration test harness (cribbed from `mdBook`).
 # By default, Cargo compiles every `tests/*.rs` file into a separate executable.

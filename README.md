@@ -1,6 +1,6 @@
 # mdp
 
-A Markdown preview tool written in idiomatic Rust (taking architectural cues from [`mdBook`](https://github.com/rust-lang/mdBook)): renders a Markdown file as a self-contained, GitHub-styled HTML page or PDF and opens it in your browser.
+A Markdown preview tool written in idiomatic Rust (taking architectural cues from [`mdBook`](https://github.com/rust-lang/mdBook)): renders a Markdown file as a self-contained, GitHub-styled HTML page, PDF, or EPUB and opens it in your browser or reader.
 
 ## Features
 
@@ -12,7 +12,7 @@ A Markdown preview tool written in idiomatic Rust (taking architectural cues fro
 * **Curated syntax highlighting**: fenced code blocks highlighted via `syntect` across 5 curated style families (`github`, `solarized`, `ocean`, `eighties`/`darcula`, `mocha`)
 * **Light & dark themes**: follows your OS `prefers-color-scheme` setting automatically, or starts in forced light (`-l`) or dark (`-d`) mode
 * **Interactive top bar**: includes the document title, slide-out table of contents toggle, in-page search (`/` or `s`), syntax style menu, light/dark toggle, and print button
-* **PDF output**: headless Chromium export (`-p` / `--pdf`) with a PDF sidebar outline built from your headings
+* **PDF & EPUB output**: headless Chromium PDF export (`-p` / `--pdf`) with a PDF sidebar outline, and native EPUB 3 export (`-e` / `--epub`) with embedded styles and table of contents navigation
 * **Self-contained output**: local images are embedded as base64 `data:` URIs so pages work anywhere
 * **Watch mode**: live-reloading local HTTP server (`-w` / `--watch`) powered by `axum`, `tokio`, and Server-Sent Events (SSE)
 
@@ -28,17 +28,18 @@ cargo install --path .
 mdp [OPTIONS] <FILE>
 ```
 
-| Option              | Meaning                                                             |
-|---------------------|---------------------------------------------------------------------|
-| `-s`, `--skip`      | Skip auto-preview; just print the output file path or URL           |
-| `-t`, `--toc`       | Start with the table of contents drawer open                        |
-| `-w`, `--watch`     | Serve a live-reloading local HTTP preview on file changes           |
-| `-o`, `--output F`  | Write to `F` instead of a temp file (a `.pdf` name implies `--pdf`) |
-| `-p`, `--pdf`       | Export a PDF using headless Chrome (placed beside `FILE` by default)|
-| `-d`, `--dark`      | Start in dark mode instead of following the OS                      |
-| `-l`, `--light`     | Start in light mode instead of following the OS                     |
-| `--style NAME`      | Code highlighting style (default `github`)                          |
-| `--dark-style NAME` | Code highlighting style for dark mode only                          |
+| Option              | Meaning                                                                              |
+|---------------------|--------------------------------------------------------------------------------------|
+| `-s`, `--skip`      | Skip auto-preview; just print the output file path or URL                            |
+| `-t`, `--toc`       | Start with the table of contents drawer open                                         |
+| `-w`, `--watch`     | Serve a live-reloading local HTTP preview on file changes                            |
+| `-o`, `--output F`  | Write to `F` instead of a temp file (`.pdf` or `.epub` implies `--pdf` or `--epub`)  |
+| `-p`, `--pdf`       | Export a PDF using headless Chrome (placed beside `FILE` by default)                 |
+| `-e`, `--epub`      | Export an EPUB 3 e-book (placed beside `FILE` by default)                            |
+| `-d`, `--dark`      | Start in dark mode instead of following the OS                                       |
+| `-l`, `--light`     | Start in light mode instead of following the OS                                      |
+| `--style NAME`      | Code highlighting style (default `github`)                                           |
+| `--dark-style NAME` | Code highlighting style for dark mode only                                           |
 
 Flags can go before or after the file name, and short flags can be combined (e.g. `mdp -wd notes.md`).
 
@@ -53,9 +54,9 @@ Without `-w`, `mdp` writes the page to a temporary `.html` file, opens it in you
 * `eighties` (or `darcula`)
 * `mocha`
 
-### PDFs
+### PDFs and EPUBs
 
-`-p` prints the rendered page to a PDF using headless Chrome, Chromium, Edge, or Brave (set `MDP_CHROME` to the browser binary path if installed in a non-standard location). By default, `notes.md` produces `notes.pdf` alongside the source file unless `-o` specifies another destination.
+`-p` prints the rendered page to a PDF using headless Chrome, Chromium, Edge, or Brave (set `MDP_CHROME` to the browser binary path if installed in a non-standard location). `-e` packages the rendered document, CSS stylesheet, and heading outline into a standalone EPUB 3 archive. By default, `notes.md` produces `notes.pdf` or `notes.epub` alongside the source file unless `-o` specifies another destination (e.g. `mdp -o book-name.epub notes.md`).
 
 ## Development
 
@@ -89,6 +90,6 @@ Inspired by [`mdBook`](https://github.com/rust-lang/mdBook), `mdp` separates its
 * **`src/style.rs`**: Curated `syntect` syntax highlighting themes, light/dark style pairings, and CSS selector scoping (`:root[data-theme="..."][data-code-style="..."]`).
 * **`src/watch.rs`**: Async live-reload HTTP server built on `axum` and `tokio`, streaming Server-Sent Events (`/events`) when watched files change.
 * **`src/pdf.rs`**: Headless Chromium runner for PDF export with document outlines and OS dark-mode detection.
+* **`src/epub.rs`**: EPUB 3 e-book generator packaging XHTML content, embedded styles, and navigation table of contents into an Open Container Format ZIP archive.
 * **`src/assets.rs`**: Compile-time embedded KaTeX (CSS, JS, and 20 base64-inlined WOFF2 fonts) and Mermaid JS assets initialized lazily via `std::sync::LazyLock`.
 * **`tests/testsuite/`**: Single-binary integration test suite (`golden.rs`, `github.rs`, `watch.rs`, `chrome.rs`, `cli.rs`).
-
