@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html data-theme="{{#if is_dark}}dark{{else}}light{{/if}}" data-code-style="{{code_style}}"{{#if toc_open}} class="toc-open"{{/if}}>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{title}}</title>
+    <script>
+      // pick the colors before the page is drawn: the theme button's choice
+      // in this tab, or else --light or --dark, or else the OS's setting
+      (() => {
+        const osDark = matchMedia("(prefers-color-scheme: dark)");
+        let choice = "{{theme}}";
+        try { choice = sessionStorage.getItem("mdp-theme") || choice; } catch {}
+        const apply = () => {
+          document.documentElement.dataset.theme =
+            choice === "auto" ? (osDark.matches ? "dark" : "light") : choice;
+          document.dispatchEvent(new Event("mdp-theme"));
+        };
+        apply();
+        osDark.addEventListener("change", () => { if (choice === "auto") apply(); });
+        window.mdpSetTheme = (theme) => {
+          choice = theme;
+          try { sessionStorage.setItem("mdp-theme", theme); } catch {}
+          apply();
+        };
+      })();
+    </script>
+    <style>
+{{{css}}}
+    </style>
+    {{#if katex_css}}
+    <style>{{{katex_css}}}</style>
+    {{/if}}
+  </head>
+  <body>
+    <header class="topbar">
+      {{#if toc}}
+      <button type="button" class="icon-button" id="toc-toggle" title="Table of contents"
+              aria-controls="toc" aria-expanded="{{toc_open}}">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none"
+             stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+          <path d="M2 3.5h12M2 8h12M2 12.5h12"/>
+        </svg>
+      </button>
+      {{/if}}
+      <button type="button" class="icon-button" id="search-toggle" title="Search (/ or s)"
+              aria-controls="search" aria-expanded="false">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none"
+             stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+          <circle cx="7" cy="7" r="4.75"/>
+          <path d="M10.5 10.5l3.75 3.75"/>
+        </svg>
+      </button>
+      <span class="topbar-title">{{title}}</span>
+      <select id="code-style" title="Code style" aria-label="Code style">
+        {{#each styles}}
+        <option value="{{this.id}}"{{#if this.selected}} selected{{/if}}>{{this.label}}</option>
+        {{/each}}
+      </select>
+      <button type="button" class="icon-button" id="theme-toggle" title="Switch light and dark">
+        <svg class="when-light" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"
+             fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round">
+          <path d="M13.5 9.75A5.75 5.75 0 0 1 6.25 2.5a5.75 5.75 0 1 0 7.25 7.25z"/>
+        </svg>
+        <svg class="when-dark" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"
+             fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+          <circle cx="8" cy="8" r="3"/>
+          <path d="M8 1v1.5M8 13.5V15M1 8h1.5M13.5 8H15M3.05 3.05l1.06 1.06M11.89 11.89l1.06 1.06M3.05 12.95l1.06-1.06M11.89 4.11l1.06-1.06"/>
+        </svg>
+      </button>
+      <button type="button" class="icon-button" id="print" title="Print">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none"
+             stroke="currentColor" stroke-width="1.5" stroke-linejoin="round">
+          <path d="M4.5 6V1.75h7V6"/>
+          <rect x="1.75" y="6" width="12.5" height="6" rx="1"/>
+          <path d="M4.5 10h7v4.25h-7z"/>
+        </svg>
+      </button>
+    </header>
+    <div class="search" id="search" hidden>
+      <div class="search-inner">
+        <input type="search" id="search-input" placeholder="Search this page" autocomplete="off"
+               spellcheck="false" aria-label="Search this page" aria-controls="search-results">
+        <p class="search-summary" id="search-summary" aria-live="polite"></p>
+        <ul class="search-results" id="search-results"></ul>
+      </div>
+    </div>
+    <div class="page">
+      {{#if toc}}
+      <nav class="toc" id="toc" aria-label="Table of contents">
+        <p class="toc-title">Contents</p>
+{{{toc}}}
+      </nav>
+      {{/if}}
+      <article class="markdown-body">
+{{{body}}}
+      </article>
+    </div>
+    <script>
+      (() => {
+        const root = document.documentElement;
+        // remembered per tab, so watch mode's reloads keep your choices
+        const store = {
+          get(key) { try { return sessionStorage.getItem(key); } catch { return null; } },
+          set(key, value) { try { sessionStorage.setItem(key, value); } catch {} },
+        };
+
+        const toggle = document.getElementById("toc-toggle");
+        const setTOC = (open) => {
+          root.classList.toggle("toc-open", open);
+          toggle?.setAttribute("aria-expanded", open);
+        };
+        const savedTOC = store.get("mdp-toc");
+        if (toggle && savedTOC) setTOC(savedTOC === "open");
+        toggle?.addEventListener("click", () => {
+          const open = !root.classList.contains("toc-open");
+          setTOC(open);
+          store.set("mdp-toc", open ? "open" : "closed");
+        });
+
+        // scroll to #links' targets directly rather than relying on the
+        // browser's handling of them, which isn't dependable for file:// pages
+        const narrow = matchMedia("(max-width: 1023px)");
+        for (const link of document.querySelectorAll("a[href^='#']")) {
+          link.addEventListener("click", (event) => {
+            const target = document.getElementById(decodeURIComponent(link.hash.slice(1)));
+            if (!target) return;
+            event.preventDefault();
+            target.scrollIntoView();
+            history.replaceState(null, "", link.hash);
+            if (narrow.matches && link.closest(".toc")) setTOC(false);
+          });
+        }
+
+        const menu = document.getElementById("code-style");
+        const savedStyle = store.get("mdp-code-style");
+        if (savedStyle && [...menu.options].some((o) => o.value === savedStyle)) {
+          menu.value = root.dataset.codeStyle = savedStyle;
+        }
+        menu.addEventListener("change", () => {
+          root.dataset.codeStyle = menu.value;
+          store.set("mdp-code-style", menu.value);
+        });
+
+        document.getElementById("theme-toggle").addEventListener("click", () => {
+          window.mdpSetTheme(root.dataset.theme === "dark" ? "light" : "dark");
+        });
+
+        document.getElementById("print").addEventListener("click", () => print());
+
+        // search: matching passages listed under their headings, and every
+        // match on the page highlighted
+        const search = document.getElementById("search");
+        const searchToggle = document.getElementById("search-toggle");
+        const input = document.getElementById("search-input");
+        const summary = document.getElementById("search-summary");
+        const list = document.getElementById("search-results");
+        const article = document.querySelector(".markdown-body");
+        const marks = window.CSS && CSS.highlights;
+        let blocks = null;
+        let results = [];
+        let selected = -1;
+
+        // the smallest elements holding text, each with the heading it's under
+        const index = () => {
+          blocks = [];
+          let heading = null;
+          const all = "h1, h2, h3, h4, h5, h6, p, li, td, th, pre, dt, dd, summary, .math-display";
+          for (const el of article.querySelectorAll(all)) {
+            if (/^H[1-6]$/.test(el.tagName)) heading = el;
+            if (el.querySelector("p, li, pre, table, h1, h2, h3, h4, h5, h6")) continue;
+            const text = el.textContent.replace(/\s+/g, " ").trim();
+            if (text) blocks.push({ el, text, lower: text.toLowerCase(), heading });
+          }
+        };
+
+        const escape = (s) => s.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+
+        // text, escaped, with the terms wrapped in <mark>
+        const mark = (text, terms) => {
+          const lower = text.toLowerCase();
+          let out = "";
+          for (let i = 0; i < text.length; ) {
+            let at = -1, len = 0;
+            for (const t of terms) {
+              const j = lower.indexOf(t, i);
+              if (j >= 0 && (at < 0 || j < at)) { at = j; len = t.length; }
+            }
+            if (at < 0) { out += escape(text.slice(i)); break; }
+            out += escape(text.slice(i, at)) + "<mark>" + escape(text.slice(at, at + len)) + "</mark>";
+            i = at + len;
+          }
+          return out;
+        };
+
+        // a stretch of text around the first match
+        const excerpt = (block, terms) => {
+          const at = Math.min(...terms.map((t) => block.lower.indexOf(t)));
+          const start = Math.max(0, at - 50);
+          const end = Math.min(block.text.length, at + 150);
+          return (start > 0 ? "…" : "") + mark(block.text.slice(start, end), terms) +
+            (end < block.text.length ? "…" : "");
+        };
+
+        const highlight = (terms) => {
+          if (!marks) return;
+          const ranges = [];
+          const walker = document.createTreeWalker(article, NodeFilter.SHOW_TEXT);
+          for (let node; (node = walker.nextNode()); ) {
+            const lower = node.data.toLowerCase();
+            for (const t of terms) {
+              for (let i = lower.indexOf(t); i >= 0; i = lower.indexOf(t, i + t.length)) {
+                const range = new Range();
+                range.setStart(node, i);
+                range.setEnd(node, i + t.length);
+                ranges.push(range);
+              }
+            }
+          }
+          marks.set("mdp-search", new Highlight(...ranges));
+        };
+
+        const select = (i) => {
+          list.children[selected]?.classList.remove("selected");
+          selected = i;
+          const item = list.children[selected];
+          item?.classList.add("selected");
+          item?.scrollIntoView({ block: "nearest" });
+        };
+
+        const go = (i) => {
+          const result = results[i];
+          if (!result) return;
+          closeSearch(false);
+          result.el.scrollIntoView({ block: "center" });
+          result.el.classList.remove("search-target");
+          void result.el.offsetWidth; // restart the flash if it's still going
+          result.el.classList.add("search-target");
+        };
+
+        const run = () => {
+          blocks ??= (index(), blocks);
+          const query = input.value.trim().toLowerCase();
+          const terms = query.split(/\s+/).filter(Boolean);
+          list.replaceChildren();
+          selected = -1;
+          if (query.length < 2) {
+            results = [];
+            summary.textContent = "";
+            marks?.delete("mdp-search");
+            return;
+          }
+          results = blocks.filter((b) => terms.every((t) => b.lower.includes(t)));
+          summary.textContent = results.length === 1 ? "1 match" : results.length + " matches";
+          for (const [i, result] of results.slice(0, 100).entries()) {
+            const item = document.createElement("li");
+            const where = result.heading && result.heading !== result.el
+              ? result.heading.textContent.trim() : "";
+            item.innerHTML = (where ? '<span class="search-heading">' + escape(where) + "</span>" : "") +
+              '<span class="search-text">' + excerpt(result, terms) + "</span>";
+            item.addEventListener("click", () => go(i));
+            list.append(item);
+          }
+          highlight(terms);
+        };
+
+        const openSearch = () => {
+          search.hidden = false;
+          searchToggle.setAttribute("aria-expanded", "true");
+          input.focus();
+          input.select();
+        };
+        const closeSearch = (clear) => {
+          search.hidden = true;
+          searchToggle.setAttribute("aria-expanded", "false");
+          if (clear) marks?.delete("mdp-search");
+        };
+
+        searchToggle.addEventListener("click", () => search.hidden ? openSearch() : closeSearch(true));
+        input.addEventListener("input", run);
+        input.addEventListener("keydown", (event) => {
+          const count = Math.min(results.length, 100);
+          if (event.key === "ArrowDown" && count) {
+            event.preventDefault();
+            select((selected + 1) % count);
+          } else if (event.key === "ArrowUp" && count) {
+            event.preventDefault();
+            select((selected - 1 + count) % count);
+          } else if (event.key === "Enter") {
+            go(Math.max(selected, 0));
+          } else if (event.key === "Escape") {
+            closeSearch(true);
+          }
+        });
+        document.addEventListener("keydown", (event) => {
+          const typing = event.target.closest("input, select, textarea");
+          if (!typing && !event.metaKey && !event.ctrlKey && !event.altKey &&
+              (event.key === "/" || event.key === "s")) {
+            event.preventDefault();
+            openSearch();
+          } else if (event.key === "Escape" && !search.hidden) {
+            closeSearch(true);
+          }
+        });
+
+        // animate the table of contents only after the saved state is applied
+        requestAnimationFrame(() => root.classList.add("ready"));
+      })();
+    </script>
+    {{#if katex_js}}
+    <script>{{{katex_js}}}</script>
+    <script>
+      for (const el of document.querySelectorAll(".math")) {
+        katex.render(el.textContent, el, {
+          displayMode: el.classList.contains("math-display"),
+          throwOnError: false,
+        });
+      }
+    </script>
+    {{/if}}
+    {{#if mermaid_js}}
+    <script>{{{mermaid_js}}}</script>
+    <script>
+      // diagrams are drawn in the page's colors, and redrawn when they change
+      (() => {
+        const diagrams = [...document.querySelectorAll("pre.mermaid")];
+        for (const d of diagrams) d.dataset.source = d.textContent;
+        const draw = () => {
+          const dark = document.documentElement.dataset.theme === "dark";
+          mermaid.initialize({ startOnLoad: false, theme: dark ? "dark" : "default" });
+          for (const d of diagrams) {
+            d.removeAttribute("data-processed");
+            d.textContent = d.dataset.source;
+          }
+          mermaid.run({ nodes: diagrams });
+        };
+        draw();
+        document.addEventListener("mdp-theme", draw);
+      })();
+    </script>
+    {{/if}}
+  </body>
+</html>

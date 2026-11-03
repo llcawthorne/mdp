@@ -1,0 +1,116 @@
+<title>GitHub Flavored Markdown</title>
+<nav class="toc" id="toc" aria-label="Table of contents">
+        <p class="toc-title">Contents</p>
+<ul>
+<li>
+<a href="#tables" rel="nofollow">Tables</a></li>
+<li>
+<a href="#lists" rel="nofollow">Lists</a></li>
+<li>
+<a href="#quotes" rel="nofollow">Quotes</a></li>
+<li>
+<a href="#inline" rel="nofollow">Inline</a></li>
+</ul>
+
+      </nav>
+<article class="markdown-body">
+<h1 id="github-flavored-markdown">GitHub Flavored Markdown</h1>
+<h2 id="tables">Tables</h2>
+<table>
+<thead>
+<tr>
+<th align="left">Left</th>
+<th align="center">Center</th>
+<th align="right">Right</th>
+<th>Inline</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td align="left">a</td>
+<td align="center">b</td>
+<td align="right">c</td>
+<td><code>code</code> and <strong>bold</strong></td>
+</tr>
+<tr>
+<td align="left">long cell content</td>
+<td align="center"></td>
+<td align="right">3.14</td>
+<td>escaped | pipe</td>
+</tr>
+</tbody>
+</table>
+<p>Not a table, no delimiter row:
+| a | b |</p>
+<h2 id="lists">Lists</h2>
+<ol>
+<li>
+<p>First</p>
+</li>
+<li>
+<p>Second</p>
+<ul>
+<li>
+<p>nested bullet
+with a lazy continuation</p>
+</li>
+<li>
+<p>another</p>
+<p>with a second paragraph</p>
+</li>
+</ul>
+</li>
+<li>
+<p>Third, containing code:</p>
+<pre class="chroma"><code><span class="sy-source sy-go">fmt<span class="sy-meta sy-function-call sy-method sy-go"><span class="sy-punctuation sy-accessor sy-go">.</span><span class="sy-variable sy-function sy-go">Println</span><span class="sy-meta sy-group sy-go"><span class="sy-punctuation sy-definition sy-group sy-begin sy-go">(</span></span></span><span class="sy-meta sy-function-call sy-method sy-go"><span class="sy-meta sy-group sy-go"><span class="sy-string sy-quoted sy-double sy-go"><span class="sy-punctuation sy-definition sy-string sy-begin sy-go">"</span>in a list<span class="sy-punctuation sy-definition sy-string sy-end sy-go">"</span></span></span><span class="sy-meta sy-group sy-go"><span class="sy-punctuation sy-definition sy-group sy-end sy-go">)</span></span></span>
+</span></code></pre>
+</li>
+<li>
+<p>Starts a list at 5? No, continues the list.</p>
+</li>
+</ol>
+<ul>
+<li><input disabled="" type="checkbox" checked="">
+done task</li>
+<li><input disabled="" type="checkbox">
+open task
+<ul>
+<li><input disabled="" type="checkbox" checked="">
+nested done task</li>
+</ul>
+</li>
+<li>not a task [ ]</li>
+</ul>
+<ul>
+<li>star bullet</li>
+</ul>
+<ul>
+<li>plus bullet starts a new list</li>
+</ul>
+<h2 id="quotes">Quotes</h2>
+<blockquote>
+<p>Quote with a list:</p>
+<ul>
+<li>one</li>
+<li>two</li>
+</ul>
+<blockquote>
+<p>Nested quote with <code>code</code>.</p>
+</blockquote>
+</blockquote>
+<h2 id="inline">Inline</h2>
+<p><del>strikethrough</del>, <em>em</em>, <em>em</em>, <strong>strong</strong>, <strong>strong</strong>, <em><strong>both</strong></em>,
+intra_word_underscores stay, <code>code with ` backtick</code>, and
+a hard break with two spaces<br>
+then a hard break with a backslash<br>
+then done.</p>
+<p>Autolinks: <a href="https://example.com" rel="nofollow">https://example.com</a>, <a href="http://www.example.com" rel="nofollow">www.example.com</a>, <a href="https://example.org" rel="nofollow">https://example.org</a>,
+and <a href="mailto:someone@example.com" rel="nofollow">someone@example.com</a>.</p>
+<p>Entities: © &amp; 😀 &lt;not a tag&gt;. Escapes: *not em*,
+[not a link], 1. not a list.</p>
+<hr>
+<hr>
+<hr>
+<p>Reference <a href="https://example.com/ref" title="Ref Title" rel="nofollow">link</a> and <a href="https://example.com/collapsed" rel="nofollow">collapsed</a> and <a href="https://example.com/shortcut" rel="nofollow">shortcut</a>.</p>
+
+      </article>

@@ -1,0 +1,224 @@
+<title>Tables</title>
+<nav class="toc" id="toc" aria-label="Table of contents">
+        <p class="toc-title">Contents</p>
+<ul>
+<li>
+<a href="#alignment" rel="nofollow">Alignment</a></li>
+<li>
+<a href="#inline-content" rel="nofollow">Inline content</a></li>
+<li>
+<a href="#ragged-rows" rel="nofollow">Ragged rows</a></li>
+<li>
+<a href="#no-outer-pipes" rel="nofollow">No outer pipes</a></li>
+<li>
+<a href="#header-only" rel="nofollow">Header only</a></li>
+<li>
+<a href="#empty-cells" rel="nofollow">Empty cells</a></li>
+<li>
+<a href="#not-tables" rel="nofollow">Not tables</a></li>
+<li>
+<a href="#wide" rel="nofollow">Wide</a></li>
+</ul>
+
+      </nav>
+<article class="markdown-body">
+<h1 id="tables">Tables</h1>
+<h2 id="alignment">Alignment</h2>
+<table>
+<thead>
+<tr>
+<th>Default</th>
+<th align="left">Left</th>
+<th align="center">Center</th>
+<th align="right">Right</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>a</td>
+<td align="left">b</td>
+<td align="center">c</td>
+<td align="right">d</td>
+</tr>
+<tr>
+<td>longer cell</td>
+<td align="left">x</td>
+<td align="center">y</td>
+<td align="right">z</td>
+</tr>
+</tbody>
+</table>
+<h2 id="inline-content">Inline content</h2>
+<table>
+<thead>
+<tr>
+<th>Markdown</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Emphasis</td>
+<td><em>em</em>, <strong>strong</strong>, <del>struck</del></td>
+</tr>
+<tr>
+<td>Code</td>
+<td><code>fmt.Println("|")</code></td>
+</tr>
+<tr>
+<td>Unescaped pipe in code splits the cell, per the GFM spec</td>
+<td>`a</td>
+</tr>
+<tr>
+<td>Escaped pipe</td>
+<td>a | b</td>
+</tr>
+<tr>
+<td>Link</td>
+<td><a href="https://example.com" rel="nofollow">example</a></td>
+</tr>
+<tr>
+<td>Image</td>
+<td><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAH0lEQVR4nAASAO3/Av8AAP8AAAAAAAAAAAAAAAAAAwAfFwIBJnyuSgAAAABJRU5ErkJggg==" alt="dot"></td>
+</tr>
+<tr>
+<td>Emoji</td>
+<td>🚀</td>
+</tr>
+<tr>
+<td>HTML</td>
+<td><kbd>Ctrl</kbd> and <br> a break</td>
+</tr>
+<tr>
+<td>Math</td>
+<td><span class="math math-inline">x^2</span></td>
+</tr>
+</tbody>
+</table>
+<h2 id="ragged-rows">Ragged rows</h2>
+<table>
+<thead>
+<tr>
+<th>A</th>
+<th>B</th>
+<th>C</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>one cell</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>two</td>
+<td>cells</td>
+<td></td>
+</tr>
+<tr>
+<td>four</td>
+<td>cells</td>
+<td>here</td>
+</tr>
+</tbody>
+</table>
+<h2 id="no-outer-pipes">No outer pipes</h2>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th align="right">Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>pi</td>
+<td align="right">3.14</td>
+</tr>
+<tr>
+<td>e</td>
+<td align="right">2.72</td>
+</tr>
+</tbody>
+</table>
+<h2 id="header-only">Header only</h2>
+<table>
+<thead>
+<tr>
+<th>Just</th>
+<th>A</th>
+<th>Header</th>
+</tr>
+</thead>
+</table>
+<h2 id="empty-cells">Empty cells</h2>
+<table>
+<thead>
+<tr>
+<th>A</th>
+<th>B</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td></td>
+<td>b</td>
+</tr>
+<tr>
+<td>a</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h2 id="not-tables">Not tables</h2>
+<p>Missing the delimiter row:</p>
+<p>| a | b |
+| c | d |</p>
+<p>Delimiter with wrong count:</p>
+<p>| a | b |
+|---|
+| c | d |</p>
+<p>A table right after a paragraph:</p>
+<table>
+<thead>
+<tr>
+<th>x</th>
+<th>y</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>2</td>
+</tr>
+</tbody>
+</table>
+<h2 id="wide">Wide</h2>
+<table>
+<thead>
+<tr>
+<th>Column one</th>
+<th>Column two</th>
+<th>Column three</th>
+<th>Column four</th>
+<th>Column five</th>
+<th>Column six</th>
+<th>Column seven</th>
+<th>Column eight</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Some long content that wraps</td>
+<td>more</td>
+<td>more</td>
+<td>more</td>
+<td>more</td>
+<td>more</td>
+<td>more</td>
+<td>more</td>
+</tr>
+</tbody>
+</table>
+
+      </article>

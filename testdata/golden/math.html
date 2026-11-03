@@ -1,0 +1,72 @@
+<title>Math</title>
+<nav class="toc" id="toc" aria-label="Table of contents">
+        <p class="toc-title">Contents</p>
+<ul>
+<li>
+<a href="#inline" rel="nofollow">Inline</a></li>
+<li>
+<a href="#display" rel="nofollow">Display</a></li>
+<li>
+<a href="#in-other-places" rel="nofollow">In other places</a></li>
+<li>
+<a href="#not-math" rel="nofollow">Not math</a></li>
+<li>
+<a href="#the-latex-heading" rel="nofollow">The  heading</a></li>
+</ul>
+
+      </nav>
+<article class="markdown-body">
+<h1 id="math">Math</h1>
+<h2 id="inline">Inline</h2>
+<p>Euler: <span class="math math-inline">e^{i\pi} + 1 = 0</span>. Bold: <span class="math math-inline">\textbf{test}</span>. Blackboard: <span class="math math-inline">\mathbb{R}^n</span>.</p>
+<p>Underscores and stars stay TeX, not emphasis: <span class="math math-inline">a_1 * b_2 * c_3</span> and <span class="math math-inline">x^*</span>.</p>
+<p>Backtick form, for a $ inside: <span class="math math-inline">\text{cost} = \$5</span>.</p>
+<p>Math in a heading's text and in <strong>bold <span class="math math-inline">x</span></strong> and <a href="https://example.com" rel="nofollow">a link <span class="math math-inline">y</span></a>.</p>
+<p>Escaped dollars stay text: $5 and $10. So do $5 and $10.</p>
+<p>Two on a line: <span class="math math-inline">a</span> and <span class="math math-inline">b</span>, adjacent <span class="math math-inline">a</span><span class="math math-inline">b</span>.</p>
+<h2 id="display">Display</h2>
+<p><span class="math math-display">\begin{aligned}
+  \nabla \cdot \mathbf{E} &amp;= \frac{\rho}{\varepsilon_0} \\
+  \nabla \times \mathbf{B} &amp;= \mu_0 \mathbf{J}
+\end{aligned}</span></p>
+<p><span class="math math-display">\sum_{k=1}^n k = \frac{n(n+1)}{2}</span></p>
+<p>A matrix:</p>
+<p><span class="math math-display">A = \begin{pmatrix} 1 &amp; 2 \\ 3 &amp; 4 \end{pmatrix}</span></p>
+<div class="math math-display">\int_{-\infty}^{\infty} e^{-x^2} \, dx = \sqrt{\pi}
+</div>
+<div class="math math-display">f(x) = \begin{cases} x &amp; x \ge 0 \\ -x &amp; x &lt; 0 \end{cases}
+</div>
+<h2 id="in-other-places">In other places</h2>
+<ul>
+<li>A list item with <span class="math math-inline">\alpha</span> in it</li>
+<li><span class="math math-display">\beta</span> as display math in a list</li>
+</ul>
+<blockquote>
+<p>A quote with <span class="math math-inline">\gamma</span>.</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>Symbol</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><span class="math math-inline">\pi</span></td>
+<td>pi</td>
+</tr>
+<tr>
+<td><span class="math math-inline">\phi</span></td>
+<td>phi</td>
+</tr>
+</tbody>
+</table>
+<h2 id="not-math">Not math</h2>
+<p>In code: <code>$x$</code> and</p>
+<pre class="chroma"><code><span class="sy-source sy-shell sy-bash"><span class="sy-meta sy-function-call sy-shell"><span class="sy-support sy-function sy-echo sy-shell">echo</span></span><span class="sy-meta sy-function-call sy-arguments sy-shell"> <span class="sy-string sy-quoted sy-double sy-shell"><span class="sy-punctuation sy-definition sy-string sy-begin sy-shell">"</span><span class="sy-meta sy-group sy-expansion sy-parameter sy-shell"><span class="sy-punctuation sy-definition sy-variable sy-shell">$</span><span class="sy-variable sy-other sy-readwrite sy-shell">HOME</span></span> costs <span class="sy-meta sy-group sy-expansion sy-parameter sy-shell"><span class="sy-punctuation sy-definition sy-variable sy-shell">$</span><span class="sy-variable sy-other sy-readwrite sy-shell">5</span></span><span class="sy-punctuation sy-definition sy-string sy-end sy-shell">"</span></span></span>
+</span></code></pre>
+<p>An empty pair $$ and a lone $ stay text.</p>
+<h2 id="the-latex-heading">The <span class="math math-inline">\LaTeX</span> heading</h2>
+
+      </article>

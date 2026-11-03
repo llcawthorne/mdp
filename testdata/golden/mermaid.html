@@ -1,0 +1,75 @@
+<title>Mermaid Diagrams</title>
+<nav class="toc" id="toc" aria-label="Table of contents">
+        <p class="toc-title">Contents</p>
+<ul>
+<li>
+<a href="#flowchart" rel="nofollow">Flowchart</a></li>
+<li>
+<a href="#sequence" rel="nofollow">Sequence</a></li>
+<li>
+<a href="#class-diagram" rel="nofollow">Class diagram</a></li>
+<li>
+<a href="#state-gantt-and-pie" rel="nofollow">State, Gantt, and pie</a></li>
+<li>
+<a href="#not-diagrams" rel="nofollow">Not diagrams</a></li>
+</ul>
+
+      </nav>
+<article class="markdown-body">
+<h1 id="mermaid-diagrams">Mermaid Diagrams</h1>
+<h2 id="flowchart">Flowchart</h2>
+<pre class="mermaid">flowchart TD
+  A[Start] --&gt; B{Is it working?}
+  B --&gt;|Yes| C[Ship it]
+  B --&gt;|No| D["Fix &lt;it&gt; &amp; retry"]
+  D --&gt; B
+</pre>
+<h2 id="sequence">Sequence</h2>
+<pre class="mermaid">sequenceDiagram
+  participant U as User
+  participant M as mdp
+  U-&gt;&gt;M: mdp -w notes.md
+  M--&gt;&gt;U: http://127.0.0.1:1234/
+  loop every 250ms
+    M-&gt;&gt;M: check notes.md
+  end
+</pre>
+<h2 id="class-diagram">Class diagram</h2>
+<pre class="mermaid">classDiagram
+  class watcher {
+    +string filename
+    +serveEvents()
+  }
+</pre>
+<h2 id="state-gantt-and-pie">State, Gantt, and pie</h2>
+<pre class="mermaid">stateDiagram-v2
+  [*] --&gt; Draft
+  Draft --&gt; Published
+  Published --&gt; [*]
+</pre>
+<pre class="mermaid">gantt
+  title Reading plan
+  dateFormat YYYY-MM-DD
+  section Rust
+  The Book :2026-10-01, 30d
+</pre>
+<pre class="mermaid">pie title Languages
+  "Go" : 40
+  "Rust" : 60
+</pre>
+<h2 id="not-diagrams">Not diagrams</h2>
+<p>A <code>mermaid</code> word in code, and a block in another language:</p>
+<pre class="chroma"><code>graph LR
+  A --&gt; B
+</code></pre>
+<p>In a list:</p>
+<ol>
+<li>
+<p>Step one:</p>
+<pre class="mermaid">graph LR
+  X --&gt; Y
+</pre>
+</li>
+</ol>
+
+      </article>

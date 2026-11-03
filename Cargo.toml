@@ -1,0 +1,37 @@
+[package]
+name = "mdp"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88.0"
+description = "A GitHub-styled Markdown previewer and PDF generator"
+license = "MIT"
+repository = "https://github.com/llcawthorne/mdp"
+
+[lints.rust]
+missing_docs = "warn"
+rust_2018_idioms = "warn"
+
+[dependencies]
+ammonia = "4"
+anyhow = "1.0.104"
+axum = "0.8.9"
+base64 = "0.22"
+clap = { version = "4.6.5", features = ["derive", "wrap_help"] }
+emojis = "0.6"
+futures-util = "0.3.33"
+handlebars = "6.4.3"
+mime_guess = "2"
+opener = "0.8.5"
+percent-encoding = "2"
+pulldown-cmark = { version = "0.13.5", default-features = false, features = ["html"] }
+regex = "1.13.1"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_yaml = "0.9"
+syntect = { version = "5.2", default-features = false, features = ["default-fancy"] }
+tempfile = "3.27.0"
+tokio = { version = "1.53.3", features = ["macros", "rt-multi-thread", "net", "time", "sync", "fs", "io-util"] }
+url = "2.5"
+
+[[test]]
+name = "testsuite"
+path = "tests/testsuite/main.rs"
