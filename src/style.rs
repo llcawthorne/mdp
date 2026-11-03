@@ -5,6 +5,30 @@
 //! `eighties`, and `mocha`) backed by [`syntect`], automatically pairing light
 //! and dark variants so switching the page theme in the browser updates code
 //! blocks seamlessly.
+//!
+//! # How This Differs from the Go Version (`mdpgo/style.go`)
+//!
+//! - **Curated `syntect` styles vs. Chroma's 200+ list**: `mdpgo` used Go's Chroma
+//!   library (`github.com/alecthomas/chroma/v2`), which emits short Pygments CSS
+//!   classes (`.k`, `.nf`, `.s`) and exposed every Chroma theme on the CLI. Here we
+//!   use [`syntect`] (which parses Sublime Text `.sublime-syntax` grammars and
+//!   `.tmTheme` color schemes) with prefixed classes (`sy-*`) and a focused 5-style
+//!   menu (`github`, `solarized`, `ocean`, `eighties`/`darcula`, `mocha`).
+//! - **Closed `enum Theme` vs. `type theme string`**: In `mdpgo`, `type theme string`
+//!   was a string typedef where invalid values like `theme("purple")` could still
+//!   be constructed. Rust's `pub enum Theme` restricts values to `Auto`, `Light`,
+//!   or `Dark` at compile time.
+//!
+//! # Stepping Stone to `mdBook`
+//!
+//! In `mdBook` (`crates/mdbook-html/src/html_handlebars/hbs_renderer.rs` and
+//! `crates/mdbook-html/front-end/css/`):
+//! - `mdBook` also ships 5 built-in themes (`Light`, `Rust`, `Coal`, `Navy`, `Ayu`)
+//!   plus an `Auto` option in its top-bar theme picker.
+//! - **Key difference**: `mdBook` highlights code blocks *client-side* in the
+//!   browser by embedding `highlight.js`, whereas `mdp` highlights code blocks
+//!   *at build time* in Rust via `syntect` so code blocks render with zero
+//!   JavaScript execution.
 
 use crate::Options;
 use anyhow::Result;
@@ -50,11 +74,9 @@ static THEME_SET: LazyLock<ThemeSet> = LazyLock::new(ThemeSet::load_defaults);
 ///
 /// - `#[derive(Copy)]`: Because `Theme` is a fieldless enum (occupying a single
 ///   byte in memory), deriving `Copy` lets it be passed by value (`self` instead
-///   of `&self`) without moving ownership, just like a primitive integer or
-///   Java `enum` reference.
+///   of `&self`) without moving ownership.
 /// - `#[default]` on `Auto`: Marks `Theme::Auto` as the `Default::default()`
-///   variant (matching Go's zero-value `auto = ""` default, but type-safe so an
-///   invalid string like `theme("purple")` cannot exist).
+///   variant (replacing Go's zero-value `auto = ""` string default).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Theme {

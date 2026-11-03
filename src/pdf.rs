@@ -5,6 +5,17 @@
 //! Chromium-based browser (`Google Chrome`, `Chromium`, `Microsoft Edge`, or
 //! `Brave Browser`) in headless mode to print a PDF complete with a sidebar
 //! document outline generated from the page's headings.
+//!
+//! # Stepping Stone to `mdBook`
+//!
+//! How does `mdBook` handle non-HTML output formats like PDF or EPUB?
+//! Rather than hardcoding a PDF driver inside the core library, `mdBook` defines
+//! a plugin protocol via the `Renderer` trait in `crates/mdbook-renderer/src/lib.rs`
+//! (`fn render(&self, ctx: &RenderContext) -> Result<()>`). When a book's `book.toml`
+//! includes `[output.pdf]`, `crates/mdbook-driver` serializes the parsed book +
+//! config as JSON (`RenderContext`) over `stdin` to an external `mdbook-pdf` binary!
+//! Because `mdp` renders single files to either HTML or PDF directly, `run_pdf` is
+//! a built-in module rather than a separate plugin process.
 
 use crate::style::Theme;
 use crate::{Config, preview};
@@ -19,6 +30,11 @@ use url::Url;
 /// Renders `page` into a PDF file on disk, writes the destination path to `out`,
 /// and opens the PDF in the system viewer unless `cfg.skip_preview` is set.
 pub fn run_pdf(cfg: &Config, page: &[u8], out: &mut dyn Write) -> Result<()> {
+    // Go vs. Rust (`Option::unwrap_or_else` vs. Go's `cmp.Or`):
+    //   In `mdpgo/pdf.go`, `cmp.Or(cfg.output, pdfPath(cfg.filename))` evaluates
+    //   both arguments eagerly and returns the first non-empty string.
+    //   In Rust, `cfg.output.clone().unwrap_or_else(|| pdf_path(&cfg.filename))`
+    //   only computes `pdf_path` lazily when `cfg.output` is `None`.
     let pdf_name = cfg
         .output
         .clone()
@@ -35,8 +51,10 @@ pub fn run_pdf(cfg: &Config, page: &[u8], out: &mut dyn Write) -> Result<()> {
 /// Returns the default PDF output path for `filename`: alongside the Markdown
 /// file with its extension replaced by `.pdf`.
 ///
-/// Compare [`Path::with_extension`] to Go's `strings.TrimSuffix(filename, filepath.Ext(filename)) + ".pdf"`:
-/// standard-library [`Path`] methods handle extension replacement natively.
+/// Go vs. Rust (`Path::with_extension` vs. `strings.TrimSuffix` + `filepath.Ext`):
+/// In `mdpgo/pdf.go`, replacing a file extension required manual string slicing
+/// (`strings.TrimSuffix(filename, filepath.Ext(filename)) + ".pdf"`). Rust's
+/// [`Path::with_extension`] handles extension replacement natively.
 pub fn pdf_path(filename: &Path) -> PathBuf {
     filename.with_extension("pdf")
 }
@@ -44,10 +62,11 @@ pub fn pdf_path(filename: &Path) -> PathBuf {
 /// Launches headless Chrome to print `page` (a complete HTML document) to `pdf_name`.
 pub fn print_pdf(page: &[u8], pdf_name: &Path) -> Result<()> {
     let chrome = find_chrome()?;
-    // RAII cleanup (`tempfile::TempDir` vs. Go's `defer os.RemoveAll(dir)`):
-    //   `temp_dir` owns the temporary directory on disk. When `temp_dir` goes
-    //   out of scope at the end of `print_pdf`—whether via the final `Ok(())`
-    //   or any early `?` / `bail!` return—its `Drop` implementation
+    // Go vs. Rust (`tempfile::TempDir` RAII vs. Go's `os.MkdirTemp` + `defer os.RemoveAll`):
+    //   In `mdpgo/pdf.go`, cleanup required an explicit `defer os.RemoveAll(dir)`.
+    //   In Rust, `temp_dir` owns the temporary directory on disk via RAII: when
+    //   `temp_dir` goes out of scope at the end of `print_pdf`—whether via the
+    //   final `Ok(())` or any early `?` / `bail!` return—its `Drop` implementation
     //   automatically deletes the directory and Chrome's temporary profile!
     let temp_dir = tempfile::Builder::new()
         .prefix("mdp")
@@ -104,15 +123,16 @@ pub fn pdf_theme(th: Theme) -> Theme {
     pdf_theme_with(th, os_prefers_dark)
 }
 
-// Rust testing idiom (`impl FnOnce() -> bool` vs. Go's mutable `var osPrefersDark`):
-//   In the Go version (`pdf.go`), `osPrefersDark` was a mutable package-level
-//   function variable (`var osPrefersDark = func() bool { ... }`) that tests
-//   temporarily overwrote. In Rust, mutable globals (`static mut`) are `unsafe`
-//   because Cargo runs unit tests in parallel across multiple threads by default!
+// Go vs. Rust (`impl FnOnce() -> bool` vs. Go's mutable `var osPrefersDark`):
+//   In `mdpgo/pdf.go`, `osPrefersDark` was a mutable package-level function
+//   variable (`var osPrefersDark = func() bool { ... }`) that `TestPDFTheme`
+//   temporarily overwrote and restored via `defer`.
+//   In Rust, mutable globals (`static mut`) are `unsafe` because Cargo runs
+//   tests concurrently across threads in the same process—mutating a global
+//   function pointer in one test would race with other running tests!
 //   Extracting `pdf_theme_with(th, prefers_dark: impl FnOnce() -> bool)` lets
-//   `pdf_theme` pass `os_prefers_dark` while parallel unit tests pass `|| true`
-//   or `|| false` with zero shared mutable state and zero dynamic-dispatch overhead
-//   (`impl FnOnce` is monomorphized at compile time).
+//   `pdf_theme` pass `os_prefers_dark` while unit tests pass `|| true` or
+//   `|| false` with zero shared mutable state and zero dynamic-dispatch overhead.
 /// Resolves the effective PDF color theme using a caller-supplied dark-mode
 /// detector (enabling deterministic unit tests without shelling out to the OS).
 pub fn pdf_theme_with(th: Theme, prefers_dark: impl FnOnce() -> bool) -> Theme {
@@ -130,9 +150,12 @@ pub fn pdf_theme_with(th: Theme, prefers_dark: impl FnOnce() -> bool) -> Theme {
 }
 
 /// Queries the operating system to determine whether dark mode is active.
+///
+/// Go vs. Rust (`cfg!(target_os = ...)` vs. `runtime.GOOS`):
+/// `cfg!(target_os = "macos")` is a compile-time macro that expands to a literal
+/// `true` or `false` constant for the target OS, allowing dead-code elimination
+/// of the other branches without needing separate platform files.
 pub fn os_prefers_dark() -> bool {
-    // `cfg!(target_os = "...")` evaluates to a compile-time `bool` constant based
-    // on the target platform, similar to Go's `runtime.GOOS == "darwin"`.
     if cfg!(target_os = "macos") {
         Command::new("defaults")
             .args(["read", "-g", "AppleInterfaceStyle"])

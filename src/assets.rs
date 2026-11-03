@@ -5,8 +5,17 @@
 //! into `katex.min.css` is non-trivial work, [`katex_css`] uses
 //! [`std::sync::LazyLock`] so the stylesheet is assembled only once on first
 //! use when a document actually contains math.
+//!
+//! # Stepping Stone to `mdBook`
+//!
+//! In `mdBook`, check out `crates/mdbook-html/src/html_handlebars/hbs_renderer.rs`
+//! and `crates/mdbook-driver/src/init.rs`: `mdBook` uses the exact same
+//! `include_str!` and `include_bytes!` macros to bake its default Handlebars
+//! template (`index.hbs`), stylesheets (`general.css`, `chrome.css`), FontAwesome
+//! icons, and JavaScript (`book.js`) into the binary, and uses [`std::sync::LazyLock`]
+//! across all workspace crates for compiled regular expressions and static tables.
 
-// Rust note (`use base64::Engine`):
+// Rust trait import note (`use base64::Engine`):
 //   In Rust, calling a trait method (`BASE64.encode(...)`) requires the trait
 //   itself (`base64::Engine`) to be in scope, even when you already have the
 //   concrete struct (`STANDARD`) in scope. This prevents method-name collisions
@@ -16,11 +25,15 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use regex::{Captures, Regex};
 use std::sync::LazyLock;
 
-// Rust note (`include_str!` / `include_bytes!` vs. Go's `//go:embed`):
-//   `include_str!("...")` is a built-in compiler macro that reads a UTF-8 file
-//   at compile time and embeds it directly into the binary's read-only data
-//   segment (`.rodata`) as a `&'static str`. Unlike Go's `embed.FS`, if the
-//   file isn't valid UTF-8 or doesn't exist, compilation fails immediately.
+// Go vs. Rust (`include_str!` / `include_bytes!` vs. Go's `//go:embed`):
+//   In `mdpgo/assets.go`, `//go:embed assets/katex assets/mermaid` embeds an
+//   `embed.FS` virtual filesystem that is queried by string path at runtime
+//   (`assets.ReadFile("assets/katex/fonts/" + m[1] + ".woff2")`).
+//   In Rust, `include_str!("...")` and `include_bytes!("...")` are built-in
+//   compiler macros that resolve each file at *compile time* and place its
+//   bytes directly into the binary's read-only data segment (`.rodata`) as a
+//   `&'static str` or `&'static [u8]`. If a file is missing or invalid UTF-8,
+//   compilation fails immediately rather than returning an error at runtime.
 
 /// Raw `katex.min.css` before font inlining.
 const KATEX_RAW_CSS: &str = include_str!("../assets/katex/katex.min.css");
@@ -82,17 +95,16 @@ fn katex_font_bytes(name: &str) -> &'static [u8] {
     }
 }
 
-// Rust smart pointer / synchronization note (`std::sync::LazyLock<T>`):
-//   Stabilized in Rust 1.80 (and heavily used across `mdBook`), `LazyLock<T>`
-//   is the standard library's thread-safe lazy initializer (combining Go's
-//   `sync.OnceValue` with smart-pointer `Deref` ergonomics).
-//   - Unlike Java's `static` initializer blocks, which run when a class is
-//     loaded, `KATEX_CSS` is never computed if the Markdown file doesn't use math.
-//   - `LazyLock<String>` implements `Deref<Target = String>`, which in turn
-//     derefs to `str`. That's why `&KATEX_CSS` in `katex_css()` below coerces
-//     directly to `&'static str` via **deref coercion**!
-//   - `re.replace_all(...)` returns a `Cow<'static, str>` (Copy-on-Write smart
-//     pointer); calling `.into_owned()` extracts the owned `String`.
+// Go vs. Rust (`std::sync::LazyLock<T>` vs. Go's `sync.OnceValue`):
+//   In `mdpgo/assets.go`, `katexCSS` is a `var katexCSS = sync.OnceValue(func() string { ... })`
+//   function closure that returns a `string` by value.
+//   In Rust, `static` items must be initialized with compile-time constants, so
+//   heap-allocated or computed globals use the smart pointer `std::sync::LazyLock<T>`.
+//   - Unlike Java's `static` initializer blocks (which run eagerly when the class
+//     loads), `KATEX_CSS` is only computed the first time it is dereferenced.
+//   - Because `LazyLock<String>` implements `Deref<Target = String>` (and `String`
+//     derefs to `str`), `&KATEX_CSS` in `katex_css()` below coerces directly to
+//     `&'static str` via **deref coercion**!
 /// Lazily computed KaTeX stylesheet with all `.woff2` fonts inlined as `data:` URIs.
 static KATEX_CSS: LazyLock<String> = LazyLock::new(|| {
     let re = Regex::new(r#"url\(fonts/(KaTeX_[\w-]+)\.woff2\) format\("woff2"\)[^;}]*"#)

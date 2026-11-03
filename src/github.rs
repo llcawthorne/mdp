@@ -8,6 +8,25 @@
 //! - Fenced ```` ```mermaid ```` diagram blocks
 //! - Blockquote alerts (`> [!NOTE]`, `> [!TIP]`, `> [!IMPORTANT]`, `> [!WARNING]`, `> [!CAUTION]`)
 //! - GFM's disallowed raw HTML tag filter (`<script>`, `<style>`, `<iframe>`, `<textarea>`, etc.)
+//!
+//! # How This Differs from the Go Version (`mdpgo/github.go`)
+//!
+//! In `mdpgo/github.go`, almost all of these features (math, `mermaid`/`math`
+//! fenced blocks, and `> [!NOTE]` alerts) had to be implemented as custom
+//! Goldmark AST node types (`mathNode`), custom inline parsers (`mathParser`),
+//! and AST transformers (`fencedMathMaidTransformer`, `alertTransformer`).
+//! In Rust, [`pulldown_cmark`] natively parses GFM blockquote alerts
+//! (`Tag::BlockQuote(Some(BlockQuoteKind))`) and math (`Event::InlineMath` /
+//! `Event::DisplayMath`), leaving only front matter, `:emoji:`, `tagfilter`,
+//! and bare autolinks as helper functions in this module!
+//!
+//! # Stepping Stone to `mdBook`
+//!
+//! When you read `crates/mdbook-markdown/src/lib.rs` in `mdBook`, you'll see
+//! `mdBook` also enables `pulldown_cmark`'s built-in GFM blockquote alerts
+//! (`Options::ENABLE_GFM`) and maps `BlockQuoteKind` variants (`Note`, `Tip`,
+//! `Important`, `Warning`, `Caution`) to HTML classes in the same way [`alert_meta`]
+//! does here.
 
 use pulldown_cmark::BlockQuoteKind;
 use regex::{Captures, Regex};
@@ -16,20 +35,21 @@ use std::borrow::Cow;
 use std::fmt::Write as _;
 use std::sync::LazyLock;
 
-// Rust smart pointer / lifetime note (`Cow<'_, str>`):
-//   `std::borrow::Cow<'a, B>` ("Clone-on-Write") is an enum with two variants:
+// Go vs. Rust (`Cow<'_, str>` vs. Go's `html.EscapeString`):
+//   In Go, `html.EscapeString(s)` returns a `string`. Even when `s` contains no
+//   special characters, any function returning `[]byte` or concatenating strings
+//   typically allocates.
+//   In Rust, `std::borrow::Cow<'a, str>` ("Clone-on-Write") is an enum:
 //       pub enum Cow<'a, B: ToOwned + ?Sized> {
 //           Borrowed(&'a B),
 //           Owned(<B as ToOwned>::Owned),
 //       }
-//   For `B = str`, `Cow<'_, str>` is either a zero-cost borrowed slice
-//   `Cow::Borrowed(&str)` or a heap-allocated `Cow::Owned(String)`.
-//   Because `Cow<'_, str>` implements `Deref<Target = str>` and `Display`,
-//   callers can pass it directly to `format!`, `push_str(&cow)`, or compare it
-//   without caring whether an allocation happened!
-//   Notice the anonymous lifetime `'_` in the return type `Cow<'_, str>`:
-//   by Rust's lifetime elision rules, `'_` ties the returned `Cow`'s borrow
-//   lifetime to the single input reference `input: &str`.
+//   When `input` has no `&`, `<`, `>`, `"`, or `'`, `escape_html` returns
+//   `Cow::Borrowed(input)`—a zero-allocation pointer into the caller's string!
+//   Only when an escapable character is found does it allocate a `String` and
+//   return `Cow::Owned(out)`.
+//   Notice the anonymous lifetime `'_` in `Cow<'_, str>`: by Rust's lifetime
+//   elision rules, `'_` ties the returned borrow lifetime to `input: &str`.
 /// Escapes `<`, `>`, `&`, `"`, and `'` for safe inclusion inside HTML text or attributes.
 ///
 /// Returns [`Cow::Borrowed`] with zero allocation when `input` contains none of
@@ -55,12 +75,17 @@ pub fn escape_html(input: &str) -> Cow<'_, str> {
     Cow::Owned(out)
 }
 
-// Borrowing & lifetime elision note (`fn extract_front_matter(markdown: &str) -> (String, &str)`):
-//   Even though the return type is a tuple `(String, &str)`, Rust's lifetime
-//   elision automatically links the `&str` in the return tuple to the input
-//   `markdown: &str` (equivalent to `fn extract_front_matter<'a>(markdown: &'a str) -> (String, &'a str)`).
-//   The returned `body` slice `&rest[offset + line.len()..]` is a zero-copy
-//   window directly into the caller's `markdown` buffer!
+// Go vs. Rust (`serde_yaml::Value` enum vs. Go's `yaml.MapSlice` + `any` type switch):
+//   1. In `mdpgo/github.go`, `extractFrontMatter` unmarshals YAML into `yaml.MapSlice`
+//      where each value has dynamic interface type `any` (`Object` in Java), and
+//      `frontMatterValue` uses a runtime type switch (`switch v := val.(type)`).
+//      In Rust, `serde_yaml::Value` is a closed algebraic data type (`enum Value {
+//      Null, Bool, Number, String, Sequence, Mapping, Tagged }`) where `Mapping`
+//      preserves YAML key insertion order natively and `match val` is checked
+//      for exhaustiveness at compile time.
+//   2. Notice the return type `(String, &str)`: by lifetime elision, the second
+//      tuple element `&str` borrows directly from `markdown: &str` (`&rest[offset + line.len()..]`),
+//      slicing off the front matter without copying the Markdown body!
 /// Extracts optional YAML front matter delimited by `---` at the start of `markdown`.
 ///
 /// Returns `(front_matter_html, remaining_markdown)`. If the front matter block
@@ -199,6 +224,12 @@ static AUTOLINK_RE: LazyLock<Regex> = LazyLock::new(|| {
     .expect("valid GFM autolink regex")
 });
 
+// Go vs. Rust (GFM extended autolinks):
+//   In `mdpgo`, Goldmark's `extension.Linkify` enabled GFM extended autolinks
+//   (bare `https://...`, `www....`, and `user@domain` emails without `<...>`).
+//   `pulldown_cmark` implements strict CommonMark `<https://...>` autolinks by
+//   default, so we layer GFM extended autolinking over plain `Event::Text` nodes
+//   (when not already inside a Markdown link) via `autolink_gfm`.
 /// Converts bare URLs (`https://...`, `www....`) and email addresses in a plain
 /// text node into HTML `<a>` elements according to GFM's extended autolink rules,
 /// returning `None` if no bare autolinks are present.

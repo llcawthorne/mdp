@@ -6,6 +6,36 @@
 //! injected before `</body>`, which subscribes to `/events?path=...` via
 //! Server-Sent Events (SSE) and triggers `location.reload()` whenever the file's
 //! modification timestamp or byte length changes.
+//!
+//! # How This Differs from the Go Version (`mdpgo/watch.go`)
+//!
+//! - **Explicit Async Runtime (`tokio` + `axum`) vs. Go's Built-in Goroutine Server**:
+//!   In Go, `net/http` is baked into the standard library and spawns a goroutine
+//!   per connection automatically. In Rust, async I/O is opt-in via [`tokio`] and
+//!   [`axum`], and shared server state must be wrapped in [`Arc<Watcher>`] (`Send + Sync`)
+//!   so worker threads can share it safely.
+//! - **Stream-Based SSE vs. Imperative `http.Flusher` Loop**: In `mdpgo/watch.go`,
+//!   `serveEvents` type-asserts `rw.(http.Flusher)` and runs a `for { select { ... } }`
+//!   loop over `<-r.Context().Done()` and `<-ticker.C`. Here, `serve_events` returns
+//!   an [`axum::response::sse::Sse`] wrapping a `futures_util::stream::unfold` state
+//!   machine. When a browser tab disconnects, Hyper drops the stream future
+//!   automatically—cancelling the polling loop without a manual `Done()` channel!
+//!
+//! # Stepping Stone to `mdBook` (`src/cmd/serve.rs` & `src/cmd/watch/`)
+//!
+//! Compare this file directly with `mdBook`'s `src/cmd/serve.rs`:
+//! - **What's the same**: `mdBook`'s `serve` command uses the exact same HTTP stack:
+//!   `tokio::runtime`, `tokio::net::TcpListener`, `axum::Router`, `axum::routing::get`,
+//!   and `futures_util` streams.
+//! - **What's different in `mdBook`**:
+//!   1. `mdBook` uses WebSockets (`axum::extract::ws::WebSocketUpgrade` on `/__livereload`)
+//!      paired with a `tokio::sync::broadcast` channel so a single file-watcher thread
+//!      can broadcast reload signals to all open browser tabs. Because `mdp` renders
+//!      individual Markdown files on demand per request, each tab's `/events?path=...`
+//!      SSE stream polls its own target file directly.
+//!   2. `mdBook` watches an entire book directory tree using the `notify` crate
+//!      (`src/cmd/watch/native.rs`) with a polling fallback (`poller.rs`), whereas
+//!      `mdp` polls `fs::metadata` every 250ms.
 
 use crate::github::escape_html;
 use crate::render::parse_content;
@@ -70,11 +100,6 @@ impl Watcher {
     /// Automatically sets `opts.served = true` so relative links between
     /// Markdown files are left intact for the local HTTP server to resolve
     /// instead of being rewritten to `file://` URLs.
-    ///
-    /// Notice `mut opts: Options` in the parameter list: just like in the Go
-    /// version (`func newWatcher(filename string, opts options)`), `opts` is
-    /// moved in by value and mutated locally (`opts.served = true`) without
-    /// affecting any caller variable.
     pub fn new(filename: impl Into<PathBuf>, mut opts: Options) -> Self {
         let filename = filename.into();
         let root = filename
@@ -131,11 +156,15 @@ impl Watcher {
     /// - Any other path is lexically normalized (collapsing `.` and preventing
     ///   `..` from climbing above `/`) before joining onto `self.root`.
     ///
-    /// Security note: in Rust, `Path::join` has a subtle gotcha—joining an
-    /// *absolute* path like `root.join("/etc/passwd")` **replaces** `root`
-    /// entirely! Iterating over [`Path::components`] and ignoring
-    /// [`Component::RootDir`] while popping on [`Component::ParentDir`] guarantees
-    /// `normalized` is always a relative path that cannot escape `self.root`.
+    /// Go vs. Rust (`Path::join` gotcha vs. Go's `filepath.Join`):
+    /// In `mdpgo/watch.go`, `filepath.Join(w.root, filepath.FromSlash(path.Clean("/"+urlPath)))`
+    /// stays inside `w.root` because Go's `filepath.Join` strips leading slashes
+    /// from subsequent arguments!
+    /// In Rust, `Path::join` has the opposite rule: joining an *absolute* path
+    /// like `root.join("/etc/passwd")` **replaces** `root` completely and returns
+    /// `"/etc/passwd"`! Iterating over [`Path::components`], ignoring
+    /// [`Component::RootDir`], and popping on [`Component::ParentDir`] guarantees
+    /// `normalized` is strictly relative and cannot escape `self.root`.
     pub fn resolve(&self, url_path: &str) -> PathBuf {
         if url_path.is_empty() || url_path == "/" {
             return self.filename.clone();
@@ -167,10 +196,11 @@ impl Watcher {
 /// writes the `http://127.0.0.1:<port>/` URL to `out`, optionally opens the
 /// user's browser, and serves requests until interrupted.
 ///
-/// Note on starting the Tokio runtime manually (`tokio::runtime::Builder`):
-/// Most of `mdp` (one-shot HTML rendering and PDF export) is synchronous and
-/// doesn't need an async runtime. Building the Tokio runtime only inside
-/// `serve()` avoids paying any async runtime startup cost when `--watch` isn't used.
+/// Stepping stone to `mdBook` (`tokio::runtime::Builder` vs. `#[tokio::main]`):
+/// Just like `mdBook`'s `src/cmd/serve.rs`, we construct the Tokio runtime
+/// explicitly inside `serve()` rather than putting `#[tokio::main]` on `fn main()`.
+/// That way, one-shot HTML and PDF commands stay purely synchronous and don't
+/// spin up a thread pool they never use.
 pub fn serve(
     filename: &Path,
     opts: Options,
@@ -187,7 +217,6 @@ pub fn serve(
         .context("failed to initialize Tokio runtime")?;
 
     rt.block_on(async move {
-        // Port `:0` asks the OS kernel to assign an available ephemeral port.
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
             .context("failed to bind local HTTP listener")?;
@@ -197,11 +226,12 @@ pub fn serve(
         out.flush()?;
 
         if !skip_preview {
-            // Ownership in `std::thread::spawn(move || ...)`:
-            //   The spawned thread may outlive the current stack frame, so its
-            //   closure must be `'static` and take ownership (`move`) of
-            //   `preview_url`. We clone `url` before spawning so `url` remains
-            //   available if needed.
+            // Go vs. Rust (`std::thread::spawn(move || ...)` vs. `go func() { ... }()`):
+            //   In Go, a goroutine closure implicitly captures outer variables by
+            //   shared reference (`url`) and the garbage collector keeps them alive.
+            //   In Rust, a spawned thread may outlive the current stack frame, so
+            //   the compiler requires `move` to transfer ownership of `preview_url`
+            //   into the closure.
             let preview_url = url.clone();
             std::thread::spawn(move || {
                 if let Err(err) = preview(&preview_url) {
@@ -223,8 +253,8 @@ pub fn serve(
 /// Slice iterator note (`page.windows(needle.len()).rposition(...)`):
 ///   `[u8]::windows(n)` returns an iterator over all contiguous `n`-byte
 ///   sub-slices of `page` without copying any bytes, and `.rposition(...)`
-///   searches from the back of the slice in $O(n)$ time (Rust's equivalent of
-///   Go's `bytes.LastIndex(page, []byte("</body>"))`).
+///   searches from the back of the slice in $O(n)$ time (replacing Go's
+///   `bytes.LastIndex(page, []byte("</body>"))`).
 pub fn inject_script(page: &[u8]) -> Vec<u8> {
     let needle = b"</body>";
     if let Some(pos) = page
@@ -324,9 +354,10 @@ fn file_stamp(path: &Path) -> Option<(SystemTime, u64)> {
     Some((modified, meta.len()))
 }
 
-// Async streams & `Infallible` note (`serve_events`):
-//   1. In Go (`watch.go`), `serveEvents` ran an infinite `for { select { ... } }`
-//      loop that wrote directly to `http.ResponseWriter` and called `flusher.Flush()`.
+// Go vs. Rust (`Sse<impl Stream>` + `Infallible` vs. Go's `http.Flusher` loop):
+//   1. In `mdpgo/watch.go`, `serveEvents` ran an imperative `for { select { ... } }`
+//      loop that wrote raw `"data: reload\n\n"` strings to `http.ResponseWriter`
+//      and called `flusher.Flush()`.
 //   2. In `axum`, Server-Sent Events are modeled functionally as an asynchronous
 //      `Stream` of `Result<Event, E>` wrapped in `Sse<S>`. As soon as the browser
 //      tab closes or reloads, Hyper drops the `Sse` response stream, which
@@ -355,7 +386,7 @@ async fn serve_events(
         |(target, interval, mut last_stamp, first_tick)| async move {
             if first_tick {
                 // `Event::default().comment("connected")` serializes on the wire
-                // as `: connected\n\n`, matching the Go version's initial flush.
+                // as `: connected\n\n`.
                 return Some((
                     Ok(Event::default().comment("connected")),
                     (target, interval, last_stamp, false),

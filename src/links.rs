@@ -9,6 +9,16 @@
 //!   matching CSS class so only the active color mode displays them.
 //! - Relative `<a href>` links become absolute `file://` URLs unless `served`
 //!   is `true` (watch mode, where the local HTTP server resolves them).
+//!
+//! # Stepping Stone to `mdBook`
+//!
+//! When you read `crates/mdbook-html/src/html_handlebars/hbs_renderer.rs` in
+//! `mdBook`, look at `build_header_links` and `fix_code_blocks`: `mdBook` uses
+//! this exact `LazyLock<Regex>` + `Regex::replace_all` + `Captures` pattern to
+//! post-process HTML tags emitted by `pulldown-cmark` before passing the body to
+//! Handlebars. (Where `mdp` differs from `mdBook`: `mdp` base64-inlines local
+//! images into the HTML so a single temporary `.html` file is 100% portable,
+//! whereas `mdBook` copies image files into the output `book/` directory.)
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
@@ -191,9 +201,12 @@ fn local_path<'a>(reference: &'a str, dir: &Path) -> Option<LocalRef<'a>> {
 /// Lexically resolves `.` and `..` path components without requiring the target
 /// file to exist on disk.
 ///
-/// Unlike `std::fs::canonicalize`, which queries the OS filesystem and fails
-/// with `ENOENT` if a linked file does not exist yet, iterating over
-/// [`Path::components`] normalizes `.` and `..` purely in memory.
+/// Go vs. Rust (`Path::components` vs. Go's `filepath.Clean` / `filepath.Join`):
+/// In Go, `filepath.Join` automatically calls `filepath.Clean` to collapse `..`
+/// lexically. In Rust, `Path::join` appends path segments verbatim WITHOUT
+/// collapsing `..`, and `std::fs::canonicalize` queries the OS filesystem (failing
+/// with `ENOENT` if the target file doesn't exist yet!). Iterating over
+/// [`Path::components`] gives us Go's lexical `filepath.Clean` behavior in memory.
 fn clean_path(path: &Path) -> PathBuf {
     let mut out = PathBuf::new();
     for comp in path.components() {
