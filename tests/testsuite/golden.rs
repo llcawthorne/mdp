@@ -12,6 +12,11 @@ use std::path::{Path, PathBuf};
 #[test]
 fn golden_files() {
     let golden_dir = Path::new("testdata/golden");
+    // Iterator chain note (`read_dir` -> `filter_map` -> `filter` -> `collect`):
+    //   `fs::read_dir` yields `io::Result<DirEntry>`. `.filter_map(|e| e.ok().map(|e| e.path()))`
+    //   unwraps valid entries into `PathBuf`s, and `.filter(...)` keeps only `.md`
+    //   files. Because filesystem directory iteration order is OS-dependent,
+    //   we sort `inputs` explicitly so golden tests run in deterministic order.
     let mut inputs: Vec<PathBuf> = fs::read_dir(golden_dir)
         .expect("read testdata/golden directory")
         .filter_map(|e| e.ok().map(|e| e.path()))
@@ -20,6 +25,10 @@ fn golden_files() {
     inputs.sort();
     assert!(!inputs.is_empty(), "no golden inputs found in testdata/golden");
 
+    // In Rust's built-in `libtest` harness, custom CLI flags aren't registered
+    // via a global `flag.Bool("-update", ...)` like in Go; instead, reading an
+    // environment variable (`MDP_UPDATE_GOLDEN=1 cargo test`) is the standard
+    // convention used by `mdBook`, `cargo`, and `insta` snapshot tests.
     let update = env::var_os("MDP_UPDATE_GOLDEN").is_some();
 
     let mut mismatches = Vec::new();

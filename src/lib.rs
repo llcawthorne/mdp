@@ -27,6 +27,13 @@
 
 #![warn(missing_docs)]
 
+// Rust module system note (`pub mod` vs. Go's flat `package main`):
+//   In Go, all `.go` files in a directory share a single flat namespace.
+//   In Rust, each file (`src/assets.rs`, `src/style.rs`, etc.) is a distinct
+//   child module explicitly declared here in the crate root (`src/lib.rs`).
+//   Re-exporting core items at the crate root (`pub use render::{parse_content, slug};`)
+//   gives external callers a flat, ergonomic public API (`mdp::parse_content`)
+//   while keeping the internal implementation modular.
 pub mod assets;
 pub mod github;
 pub mod links;
@@ -48,6 +55,9 @@ use std::thread;
 use std::time::Duration;
 
 /// Rendering options controlling page appearance, syntax highlighting, and link resolution.
+///
+/// Deriving `Default` lets callers and tests use struct update syntax:
+/// `Options { toc: true, ..Options::default() }`.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Options {
     /// Start with the table of contents drawer open (`--toc` / `-t`).
@@ -64,6 +74,12 @@ pub struct Options {
 }
 
 /// Complete configuration parsed from command-line arguments.
+///
+/// Notice two idiomatic Rust differences compared to the Go version's `config`:
+/// 1. File paths use [`PathBuf`] (an owned, OS-native path buffer that handles
+///    platform path separators and non-UTF-8 paths) rather than plain `String`.
+/// 2. Optional values use `Option<PathBuf>` instead of a sentinel empty string
+///    `""`, making "no output file specified" explicit in the type system.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Config {
     /// Path to the input Markdown file.
@@ -82,6 +98,10 @@ pub struct Config {
 }
 
 /// Command-line interface definition powered by [`clap`].
+///
+/// `#[derive(Parser)]` is a procedural macro that inspects the struct fields,
+/// types (`bool`, `Option<PathBuf>`, `Vec<PathBuf>`), and `///` doc comments at
+/// compile time to generate both the argument parser and `--help` output.
 #[derive(Debug, Parser)]
 #[command(
     name = "mdp",
@@ -134,11 +154,25 @@ struct Cli {
 ///
 /// Writes help or usage text to `stderr` when `--help` / `--version` is requested
 /// or when positional arguments are missing.
+///
+/// # Rust Generics & Trait Objects Note
+///
+/// - `I: IntoIterator<Item = T>, T: Into<OsString> + Clone`: Accepting any
+///   iterable of items convertible into `OsString` lets `main` pass
+///   `env::args_os().skip(1)` while unit tests pass a simple array literal like
+///   `["-swl", "a.md"]` without converting strings manually!
+/// - `stderr: &mut dyn Write`: A mutable reference to a **trait object**
+///   (dynamic dispatch via a vtable, analogous to Go's `io.Writer` or Java's
+///   `OutputStream`). In production `main` passes a `Vec<u8>` buffer or
+///   `io::stderr()`; tests pass `&mut Vec::new()`.
 pub fn parse_args<I, T>(args: I, stderr: &mut dyn Write) -> Result<Config>
 where
     I: IntoIterator<Item = T>,
     T: Into<OsString> + Clone,
 {
+    // `clap::Parser::try_parse_from` expects `argv[0]` (the program name) as the
+    // first element of the iterator, so we prepend `"mdp"` with `std::iter::once`
+    // and `.chain(...)` without allocating an intermediate `Vec`.
     let full_args = std::iter::once(OsString::from("mdp"))
         .chain(args.into_iter().map(Into::into));
 
@@ -146,6 +180,7 @@ where
         Ok(c) => c,
         Err(err) => {
             let _ = write!(stderr, "{err}");
+            // `anyhow::bail!(...)` is shorthand for `return Err(anyhow::anyhow!(...))`.
             bail!("{err}");
         }
     };
@@ -155,6 +190,10 @@ where
     }
 
     let mut pdf = cli.pdf;
+    // Rust 2024 `if let ... && ...` chain: combines pattern matching (`Some(ref out_path)`)
+    // with a boolean condition in a single flat `if` condition.
+    // Note `ref out_path`: borrows the `PathBuf` inside `cli.output` rather than
+    // moving (consuming) it, because `cli.output` is moved into `Config` at the end.
     if let Some(ref out_path) = cli.output
         && out_path
             .extension()
@@ -201,6 +240,8 @@ where
     }
 
     Ok(Config {
+        // `into_iter()` consumes `cli.files` by value, moving the single `PathBuf`
+        // out of the vector without cloning it.
         filename: cli.files.into_iter().next().unwrap(),
         skip_preview: cli.skip,
         watch: cli.watch,
@@ -219,6 +260,9 @@ where
 /// Executes the one-shot HTML or PDF rendering pipeline for `cfg` and writes the
 /// resulting output file path to `out`.
 pub fn run(cfg: &Config, out: &mut dyn Write) -> Result<()> {
+    // `.with_context(|| ...)` from `anyhow::Context` attaches a lazily evaluated
+    // error message only if `fs::read` returns `Err`, avoiding `format!` string
+    // allocation on the happy path.
     let input = fs::read(&cfg.filename)
         .with_context(|| format!("failed to read {}", cfg.filename.display()))?;
 
@@ -233,6 +277,13 @@ pub fn run(cfg: &Config, out: &mut dyn Write) -> Result<()> {
         return pdf::run_pdf(cfg, &html_data, out);
     }
 
+    // Ownership & RAII note (`tempfile::NamedTempFile::keep`):
+    //   By default, `NamedTempFile` deletes its underlying file as soon as it is
+    //   dropped at the end of the block. Because we want the file to stay on
+    //   disk when `cfg.skip_preview` is true (so the caller can inspect the path
+    //   printed to `stdout`), calling `.keep()` disarms the automatic RAII
+    //   deletion and returns the owned `(File, PathBuf)`. When `!cfg.skip_preview`,
+    //   we explicitly remove the temp file after `preview` returns.
     let (out_path, is_temp) = match cfg.output {
         Some(ref path) => (path.clone(), false),
         None => {

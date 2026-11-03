@@ -37,6 +37,8 @@ pub const POLL_INTERVAL: Duration = Duration::from_millis(250);
 ///
 /// Opens an `EventSource` connection to `/events?path=<current pathname>` and
 /// reloads the page whenever a `"reload"` event arrives.
+///
+/// `concat!(...)` joins string literals at compile time into a single `&'static str`.
 pub const RELOAD_SCRIPT: &str = concat!(
     r#"<script>new EventSource("/events?path=" + "#,
     r#"encodeURIComponent(decodeURIComponent(location.pathname))).onmessage = () => location.reload();</script>"#
@@ -52,6 +54,10 @@ pub struct Watcher {
 }
 
 /// Query parameters for the `/events` Server-Sent Events endpoint.
+///
+/// `#[derive(Deserialize)]` allows `axum::extract::Query<EventQuery>` to parse
+/// `?path=/other.md` directly into this struct, defaulting `path` to `""` when
+/// omitted (`#[serde(default)]`).
 #[derive(Deserialize)]
 struct EventQuery {
     #[serde(default)]
@@ -64,6 +70,11 @@ impl Watcher {
     /// Automatically sets `opts.served = true` so relative links between
     /// Markdown files are left intact for the local HTTP server to resolve
     /// instead of being rewritten to `file://` URLs.
+    ///
+    /// Notice `mut opts: Options` in the parameter list: just like in the Go
+    /// version (`func newWatcher(filename string, opts options)`), `opts` is
+    /// moved in by value and mutated locally (`opts.served = true`) without
+    /// affecting any caller variable.
     pub fn new(filename: impl Into<PathBuf>, mut opts: Options) -> Self {
         let filename = filename.into();
         let root = filename
@@ -81,11 +92,28 @@ impl Watcher {
     }
 
     /// Overrides the file-polling interval (useful for fast integration tests).
+    ///
+    /// Builder method pattern: takes `mut self` by value, updates `self.interval`,
+    /// and returns `self` so callers can chain `Watcher::new(...).with_interval(...)`.
     pub fn with_interval(mut self, interval: Duration) -> Self {
         self.interval = interval;
         self
     }
 
+    // Smart pointer & concurrency note (`self: Arc<Self>`):
+    //   1. Why `Arc<Watcher>` instead of `Rc<Watcher>`?
+    //      In single-threaded Rust code (like the `Cons` list in Chapter 15 of
+    //      *The Rust Programming Language*), `Rc<T>` uses non-atomic reference
+    //      counts and therefore does NOT implement `Send` or `Sync`.
+    //      Because `axum` runs on Tokio's multi-threaded work-stealing runtime,
+    //      incoming HTTP request tasks can be scheduled on any worker thread.
+    //      `Arc<T>` ("Atomically Reference Counted") uses atomic CPU instructions
+    //      for its reference count, making `Arc<Watcher>` `Send + Sync` so
+    //      cloning the `Arc` into each request handler is a cheap atomic increment!
+    //   2. Notice the receiver syntax `self: Arc<Self>` ("arbitrary self types"):
+    //      instead of taking `&self`, this method can only be called on a
+    //      `Watcher` already wrapped in an `Arc` (`watcher.router()`), passing
+    //      that `Arc<Watcher>` straight into `.with_state(self)`.
     /// Builds the [`axum::Router`] serving `/events` for SSE and all other paths
     /// for Markdown rendering or static file delivery.
     pub fn router(self: Arc<Self>) -> Router {
@@ -102,6 +130,12 @@ impl Watcher {
     /// - `"/"` or `""` resolves to `self.filename`.
     /// - Any other path is lexically normalized (collapsing `.` and preventing
     ///   `..` from climbing above `/`) before joining onto `self.root`.
+    ///
+    /// Security note: in Rust, `Path::join` has a subtle gotcha—joining an
+    /// *absolute* path like `root.join("/etc/passwd")` **replaces** `root`
+    /// entirely! Iterating over [`Path::components`] and ignoring
+    /// [`Component::RootDir`] while popping on [`Component::ParentDir`] guarantees
+    /// `normalized` is always a relative path that cannot escape `self.root`.
     pub fn resolve(&self, url_path: &str) -> PathBuf {
         if url_path.is_empty() || url_path == "/" {
             return self.filename.clone();
@@ -132,6 +166,11 @@ impl Watcher {
 /// Starts the live-reloading HTTP server on an ephemeral `127.0.0.1` port,
 /// writes the `http://127.0.0.1:<port>/` URL to `out`, optionally opens the
 /// user's browser, and serves requests until interrupted.
+///
+/// Note on starting the Tokio runtime manually (`tokio::runtime::Builder`):
+/// Most of `mdp` (one-shot HTML rendering and PDF export) is synchronous and
+/// doesn't need an async runtime. Building the Tokio runtime only inside
+/// `serve()` avoids paying any async runtime startup cost when `--watch` isn't used.
 pub fn serve(
     filename: &Path,
     opts: Options,
@@ -148,6 +187,7 @@ pub fn serve(
         .context("failed to initialize Tokio runtime")?;
 
     rt.block_on(async move {
+        // Port `:0` asks the OS kernel to assign an available ephemeral port.
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
             .context("failed to bind local HTTP listener")?;
@@ -157,6 +197,11 @@ pub fn serve(
         out.flush()?;
 
         if !skip_preview {
+            // Ownership in `std::thread::spawn(move || ...)`:
+            //   The spawned thread may outlive the current stack frame, so its
+            //   closure must be `'static` and take ownership (`move`) of
+            //   `preview_url`. We clone `url` before spawning so `url` remains
+            //   available if needed.
             let preview_url = url.clone();
             std::thread::spawn(move || {
                 if let Err(err) = preview(&preview_url) {
@@ -174,6 +219,12 @@ pub fn serve(
 
 /// Injects [`RELOAD_SCRIPT`] immediately before the closing `</body>` tag, or
 /// appends it at the end if `</body>` is absent.
+///
+/// Slice iterator note (`page.windows(needle.len()).rposition(...)`):
+///   `[u8]::windows(n)` returns an iterator over all contiguous `n`-byte
+///   sub-slices of `page` without copying any bytes, and `.rposition(...)`
+///   searches from the back of the slice in $O(n)$ time (Rust's equivalent of
+///   Go's `bytes.LastIndex(page, []byte("</body>"))`).
 pub fn inject_script(page: &[u8]) -> Vec<u8> {
     let needle = b"</body>";
     if let Some(pos) = page
@@ -205,6 +256,13 @@ fn is_markdown(path: &Path) -> bool {
     )
 }
 
+// Axum extractor & `IntoResponse` note:
+//   - `State(watcher): State<Arc<Watcher>>` destructures the `State` wrapper
+//     directly in the parameter list, giving us an owned `Arc<Watcher>` (cloned
+//     via `Arc::clone` for this request).
+//   - Because different branches return different body types (`Vec<u8>`,
+//     `&'static str`, `String`), calling `.into_response()` converts each tuple
+//     `(StatusCode, headers, body)` into a unified `axum::response::Response`.
 /// Handler for `GET /` and `GET /{*path}`: renders Markdown files with
 /// [`RELOAD_SCRIPT`] and serves other files directly from disk.
 async fn serve_file(State(watcher): State<Arc<Watcher>>, uri: Uri) -> Response {
@@ -266,6 +324,22 @@ fn file_stamp(path: &Path) -> Option<(SystemTime, u64)> {
     Some((modified, meta.len()))
 }
 
+// Async streams & `Infallible` note (`serve_events`):
+//   1. In Go (`watch.go`), `serveEvents` ran an infinite `for { select { ... } }`
+//      loop that wrote directly to `http.ResponseWriter` and called `flusher.Flush()`.
+//   2. In `axum`, Server-Sent Events are modeled functionally as an asynchronous
+//      `Stream` of `Result<Event, E>` wrapped in `Sse<S>`. As soon as the browser
+//      tab closes or reloads, Hyper drops the `Sse` response stream, which
+//      automatically cancels the in-flight `tokio::time::sleep` future—no manual
+//      `<-r.Context().Done()` select branch needed!
+//   3. `futures_util::stream::unfold(initial_state, |state| async move { ... })`
+//      turns a state machine into a `Stream`: each step awaits the next event
+//      and returns `Some((item, next_state))` (or `None` to end the stream).
+//   4. Why `Result<Event, Infallible>`? `axum::response::sse::Sse` requires
+//      stream items to be a `Result<Event, E>`. Because our polling loop never
+//      produces a stream error, we use `std::convert::Infallible`—an empty enum
+//      (`pub enum Infallible {}`) that can never be constructed, proving at
+//      compile time that the `Err` branch is impossible!
 /// Handler for `GET /events?path=...`: streams a Server-Sent Event (`data: reload`)
 /// whenever the target file's modification time or size changes.
 async fn serve_events(
@@ -280,6 +354,8 @@ async fn serve_events(
         (target, interval, initial_stamp, true),
         |(target, interval, mut last_stamp, first_tick)| async move {
             if first_tick {
+                // `Event::default().comment("connected")` serializes on the wire
+                // as `: connected\n\n`, matching the Go version's initial flush.
                 return Some((
                     Ok(Event::default().comment("connected")),
                     (target, interval, last_stamp, false),

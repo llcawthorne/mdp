@@ -401,3 +401,4 @@ fn pdf_theme_respects_preference_or_os() {
     assert_eq!(pdf_theme_with(Theme::Light, || true), Theme::Light);
     assert_eq!(pdf_theme_with(Theme::Dark, || false), Theme::Dark);
 }
+

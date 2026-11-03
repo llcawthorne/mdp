@@ -39,6 +39,12 @@ const PAGE_TEMPLATE: &str = include_str!("../assets/page.hbs");
 const FRAGMENT_ENCODE_SET: &AsciiSet = &CONTROLS.add(b' ').add(b'"').add(b'<').add(b'>').add(b'`');
 
 /// Template context serialized into `assets/page.hbs`.
+///
+/// Notice the lifetime `'a` on `PageContext<'a>`: while fields like `title`,
+/// `css`, and `body` are freshly generated owned `String`s, the large ~270KB+
+/// `katex_css`, `katex_js`, and `mermaid_js` bundles are borrowed directly as
+/// `Option<&'a str>` (`'static` slices from `assets.rs`) so we never copy them
+/// when building the template context!
 #[derive(Serialize)]
 struct PageContext<'a> {
     title: String,
@@ -65,6 +71,11 @@ struct HeadingEntry {
 }
 
 /// Lazily initialized [`ammonia::Builder`] configured to match GitHub's allowed HTML subset.
+///
+/// Notice `AmmoniaBuilder<'static>`: `ammonia::Builder<'a>` is parameterized over
+/// the lifetime of the tag and attribute names registered in its allowlists.
+/// Because all tag/attribute names below (`"kbd"`, `"details"`, `"align"`) are
+/// string literals, their lifetime is `'static`.
 static SANITIZER: LazyLock<AmmoniaBuilder<'static>> = LazyLock::new(|| {
     let mut builder = AmmoniaBuilder::default();
     builder.add_tags([
@@ -112,6 +123,8 @@ static HANDLEBARS: LazyLock<Handlebars<'static>> = LazyLock::new(|| {
 /// top-level `#` heading, and its parent directory is used to resolve relative
 /// links and local images.
 pub fn parse_content(input: &[u8], filename: &Path, opts: &Options) -> Result<Vec<u8>> {
+    // `std::str::from_utf8(input)` validates UTF-8 in place and returns a
+    // borrowed `&str` slice pointing to `input` with zero allocation.
     let markdown = std::str::from_utf8(input).context("Markdown file is not valid UTF-8")?;
     let (front_matter_html, body_md) = extract_front_matter(markdown);
 
@@ -140,6 +153,9 @@ pub fn parse_content(input: &[u8], filename: &Path, opts: &Options) -> Result<Ve
                 .unwrap_or_else(|| String::from("mdp"))
         });
 
+    // Notice `bool::then`: `rendered.uses_math.then(katex_css)` calls the
+    // function `katex_css` and wraps its result in `Some(...)` only when
+    // `uses_math` is `true`, or evaluates to `None` when `false`!
     let ctx = PageContext {
         title: page_title,
         theme: opts.theme.as_str(),
@@ -158,6 +174,8 @@ pub fn parse_content(input: &[u8], filename: &Path, opts: &Options) -> Result<Ve
     let page = HANDLEBARS
         .render("page", &ctx)
         .context("failed to render page template")?;
+    // `String::into_bytes(self)` consumes the `String` and returns its underlying
+    // `Vec<u8>` buffer in O(1) time without copying a single byte.
     Ok(page.into_bytes())
 }
 
@@ -181,6 +199,16 @@ fn level_to_u8(level: HeadingLevel) -> u8 {
     }
 }
 
+// Pull-parser architecture note (`pulldown_cmark` vs. Go's Goldmark AST):
+//   In the Go version (`render.go` and `github.go`), Goldmark parsed the
+//   Markdown into a heap-allocated tree of AST nodes, and separate tree-walking
+//   passes mutated or replaced nodes before rendering.
+//   In Rust (and `mdBook`), `pulldown_cmark` is a streaming pull-parser:
+//   `Parser` implements `Iterator<Item = Event<'a>>`, where each `Event<'a>`
+//   (`Start(Tag)`, `Text(CowStr<'a>)`, `End(TagEnd)`, etc.) borrows slices
+//   directly from `body_md`. We transform that stream in a single pass by
+//   mapping or replacing events into `out_events: Vec<Event<'_>>`, and then feed
+//   `out_events.into_iter()` into `pulldown_cmark::html::push_html`.
 /// Runs [`pulldown_cmark`] over `body_md`, transforming GFM extensions, code
 /// blocks, headings, math, Mermaid diagrams, and footnotes into an HTML string.
 fn render_markdown_body(body_md: &str, front_matter_html: &str) -> RenderedBody {
@@ -192,6 +220,11 @@ fn render_markdown_body(body_md: &str, front_matter_html: &str) -> RenderedBody 
     cmark_opts.insert(CmarkOptions::ENABLE_GFM);
     cmark_opts.insert(CmarkOptions::ENABLE_MATH);
 
+    // `.into_offset_iter()` yields `(Event<'_>, Range<usize>)` pairs where the
+    // `Range<usize>` is the exact byte span of that event in `body_md`. Having
+    // the source byte range lets us inspect adjacent characters in `body_md`
+    // (such as checking whether `$x$5` has a digit right after the closing `$`,
+    // or coalescing `` $`...`$ `` backtick math).
     let raw_events: Vec<(Event<'_>, std::ops::Range<usize>)> =
         Parser::new_ext(body_md, cmark_opts)
             .into_offset_iter()
@@ -223,7 +256,13 @@ fn render_markdown_body(body_md: &str, front_matter_html: &str) -> RenderedBody 
     let mut in_link_depth: usize = 0;
 
     for (event, range) in events {
-        // If inside a fenced/indented code block, accumulate text until End(CodeBlock)
+        // Pattern matching with `ref` and `ref mut` (`if let Some((ref lang, ref mut code_buf)) = in_code_block`):
+        //   Without `ref` / `ref mut`, matching `Some((lang, code_buf))` would
+        //   *move* the `String`s out of `in_code_block`, consuming it on the
+        //   first event inside the code block! `ref lang` borrows the language
+        //   string immutably (`&String`), and `ref mut code_buf` borrows the
+        //   buffer mutably (`&mut String`) so we can `code_buf.push_str(&t)` across
+        //   multiple `Event::Text` chunks until `Event::End(TagEnd::CodeBlock)`.
         if let Some((ref lang, ref mut code_buf)) = in_code_block {
             match event {
                 Event::End(TagEnd::CodeBlock) => {
@@ -264,6 +303,9 @@ fn render_markdown_body(body_md: &str, front_matter_html: &str) -> RenderedBody 
                     *seen_ids.entry(id.clone()).or_insert(0) += 1;
 
                     let mut inner_html = String::new();
+                    // `h_events.drain(..)` moves all buffered events out of the
+                    // `Vec` into `push_html` without deallocating the vector's
+                    // backing buffer before `in_heading = None` drops it.
                     pulldown_cmark::html::push_html(&mut inner_html, h_events.drain(..));
                     let heading_html = format!("<h{lvl} id=\"{id}\">{inner_html}</h{lvl}>\n");
 
@@ -472,6 +514,11 @@ fn render_markdown_body(body_md: &str, front_matter_html: &str) -> RenderedBody 
                     footnote_order.push(key);
                     n
                 };
+                // Raw string literal note (`r##"..."##`):
+                //   Because the HTML contains `href="#fn:..."`, which has `"#`
+                //   inside the string, a single-hash raw string `r#"..."#` would
+                //   think `"#` closes the string! Using two hashes (`r##"..."##`)
+                //   allows `"#` to appear freely inside the literal.
                 let html = format!(
                     r##"<sup id="fnref:{num}"><a href="#fn:{num}" class="footnote-ref" role="doc-noteref">{num}</a></sup>"##
                 );
@@ -481,6 +528,9 @@ fn render_markdown_body(body_md: &str, front_matter_html: &str) -> RenderedBody 
                 in_footnote_def = Some((name.to_string(), Vec::new()));
             }
             Event::End(TagEnd::FootnoteDefinition) => {
+                // `Option::take(&mut self)` swaps `Some(value)` out of `in_footnote_def`
+                // and leaves `None` in its place in one step—a classic Rust idiom
+                // for moving an owned value out of a mutable `Option` without cloning.
                 if let Some((name, def_events)) = in_footnote_def.take() {
                     footnote_defs.insert(name, def_events);
                 }

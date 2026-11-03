@@ -91,3 +91,4 @@ Inspired by [`mdBook`](https://github.com/rust-lang/mdBook), `mdp` separates its
 * **`src/pdf.rs`**: Headless Chromium runner for PDF export with document outlines and OS dark-mode detection.
 * **`src/assets.rs`**: Compile-time embedded KaTeX (CSS, JS, and 20 base64-inlined WOFF2 fonts) and Mermaid JS assets initialized lazily via `std::sync::LazyLock`.
 * **`tests/testsuite/`**: Single-binary integration test suite (`golden.rs`, `github.rs`, `watch.rs`, `chrome.rs`, `cli.rs`).
+

@@ -16,6 +16,20 @@ use std::borrow::Cow;
 use std::fmt::Write as _;
 use std::sync::LazyLock;
 
+// Rust smart pointer / lifetime note (`Cow<'_, str>`):
+//   `std::borrow::Cow<'a, B>` ("Clone-on-Write") is an enum with two variants:
+//       pub enum Cow<'a, B: ToOwned + ?Sized> {
+//           Borrowed(&'a B),
+//           Owned(<B as ToOwned>::Owned),
+//       }
+//   For `B = str`, `Cow<'_, str>` is either a zero-cost borrowed slice
+//   `Cow::Borrowed(&str)` or a heap-allocated `Cow::Owned(String)`.
+//   Because `Cow<'_, str>` implements `Deref<Target = str>` and `Display`,
+//   callers can pass it directly to `format!`, `push_str(&cow)`, or compare it
+//   without caring whether an allocation happened!
+//   Notice the anonymous lifetime `'_` in the return type `Cow<'_, str>`:
+//   by Rust's lifetime elision rules, `'_` ties the returned `Cow`'s borrow
+//   lifetime to the single input reference `input: &str`.
 /// Escapes `<`, `>`, `&`, `"`, and `'` for safe inclusion inside HTML text or attributes.
 ///
 /// Returns [`Cow::Borrowed`] with zero allocation when `input` contains none of
@@ -41,6 +55,12 @@ pub fn escape_html(input: &str) -> Cow<'_, str> {
     Cow::Owned(out)
 }
 
+// Borrowing & lifetime elision note (`fn extract_front_matter(markdown: &str) -> (String, &str)`):
+//   Even though the return type is a tuple `(String, &str)`, Rust's lifetime
+//   elision automatically links the `&str` in the return tuple to the input
+//   `markdown: &str` (equivalent to `fn extract_front_matter<'a>(markdown: &'a str) -> (String, &'a str)`).
+//   The returned `body` slice `&rest[offset + line.len()..]` is a zero-copy
+//   window directly into the caller's `markdown` buffer!
 /// Extracts optional YAML front matter delimited by `---` at the start of `markdown`.
 ///
 /// Returns `(front_matter_html, remaining_markdown)`. If the front matter block
@@ -56,6 +76,8 @@ pub fn extract_front_matter(markdown: &str) -> (String, &str) {
     };
 
     let mut offset = 0;
+    // `split_inclusive('\n')` yields each line *with* its `\n` (or `\r\n`) intact,
+    // so `line.len()` is the exact byte advance in `rest` regardless of LF vs CRLF.
     for line in rest.split_inclusive('\n') {
         let trimmed = line.trim_end_matches(['\r', '\n']);
         if trimmed == "---" || trimmed == "..." {
@@ -134,6 +156,9 @@ pub fn replace_emojis(text: &str) -> Cow<'_, str> {
     if !text.contains(':') {
         return Cow::Borrowed(text);
     }
+    // `Regex::replace_all` itself returns `Cow<'_, str>`: if `EMOJI_RE` finds
+    // no matches in `text`, `replace_all` returns `Cow::Borrowed(text)` without
+    // allocating a new `String`!
     EMOJI_RE.replace_all(text, |caps: &Captures<'_>| {
         if let Some(emoji) = emojis::get_by_shortcode(&caps[1]) {
             emoji.as_str().to_string()

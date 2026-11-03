@@ -196,3 +196,4 @@ fn tag_filter_escapes_disallowed_raw_html() {
         assert!(body.contains(want), "missing {want:?} in:\n{body}");
     }
 }
+

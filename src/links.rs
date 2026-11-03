@@ -30,6 +30,17 @@ static ATTR_RE: LazyLock<Regex> = LazyLock::new(|| {
         .expect("valid HTML attribute regex")
 });
 
+// Explicit lifetime specifier note (`pub fn fix_links<'a>(page_html: &'a str, dir: &Path, ...)-> Cow<'a, str>`):
+//   Why do we need an explicit `'a` here when `escape_html` in `github.rs`
+//   didn't need one?
+//   Because `fix_links` takes **two** reference parameters (`page_html: &str`
+//   and `dir: &Path`). With two input lifetimes, Rust's compiler refuses to
+//   guess which one the returned `Cow<'_, str>` borrows from!
+//   Writing `<'a>` on `page_html: &'a str` and `Cow<'a, str>` tells the borrow
+//   checker: "the returned `Cow` may borrow from `page_html`, and never borrows
+//   from `dir`"—so `dir` can be a temporary path that drops immediately after
+//   `fix_links` returns while the returned `Cow<'a, str>` stays valid as long
+//   as `page_html` is alive.
 /// Rewrites `<img src>`, `<source srcset>`, and `<a href>` attributes in `page_html`
 /// relative to `dir`.
 pub fn fix_links<'a>(page_html: &'a str, dir: &Path, served: bool) -> Cow<'a, str> {
@@ -95,6 +106,13 @@ fn mode_only(src: &str) -> Option<&'static str> {
     None
 }
 
+// Struct lifetime note (`struct LocalRef<'a>`):
+//   `LocalRef<'a>` mixes an owned `PathBuf` (allocated because we joined `dir`
+//   and decoded percent-escapes) with zero-copy borrowed slices `Option<&'a str>`
+//   for `query` and `fragment` (sliced directly out of `reference: &'a str`).
+//   In Rust, any struct holding a reference must declare a lifetime parameter
+//   (`<'a>`) so the compiler guarantees a `LocalRef<'a>` never outlives the
+//   `reference` string its `query` and `fragment` fields point into.
 /// Parsed components of a relative or local file reference.
 struct LocalRef<'a> {
     path: PathBuf,
@@ -134,6 +152,11 @@ fn local_path<'a>(reference: &'a str, dir: &Path) -> Option<LocalRef<'a>> {
         return None;
     }
 
+    // `percent_decode_str(raw_path).decode_utf8()` returns `Result<Cow<'_, str>, Utf8Error>`:
+    // if `raw_path` has no `%XX` sequences (the 99% case), `decoded` is a
+    // `Cow::Borrowed(&str)` pointing straight into `raw_path` with zero allocation!
+    // And `?` on `.ok()?` early-returns `None` if a `%XX` sequence decodes to
+    // invalid UTF-8.
     let decoded = percent_decode_str(raw_path).decode_utf8().ok()?;
     let had_trailing_slash = decoded.ends_with('/');
     let rel_path = Path::new(decoded.as_ref());
@@ -167,6 +190,10 @@ fn local_path<'a>(reference: &'a str, dir: &Path) -> Option<LocalRef<'a>> {
 
 /// Lexically resolves `.` and `..` path components without requiring the target
 /// file to exist on disk.
+///
+/// Unlike `std::fs::canonicalize`, which queries the OS filesystem and fails
+/// with `ENOENT` if a linked file does not exist yet, iterating over
+/// [`Path::components`] normalizes `.` and `..` purely in memory.
 fn clean_path(path: &Path) -> PathBuf {
     let mut out = PathBuf::new();
     for comp in path.components() {

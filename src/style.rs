@@ -21,6 +21,11 @@ use syntect::util::LinesWithEndings;
 pub const DEFAULT_STYLE: &str = "github";
 
 /// Prefix applied to `syntect` CSS classes on highlighted code tokens.
+///
+/// Using `ClassStyle::SpacedPrefixed { prefix: "sy-" }` generates CSS classes
+/// like `class="sy-source sy-rust"` instead of inline `style="color:..."`
+/// attributes, allowing a single rendered code block to switch colors instantly
+/// when the user toggles light/dark mode or picks a different style in the top bar.
 const CLASS_STYLE: ClassStyle = ClassStyle::SpacedPrefixed { prefix: "sy-" };
 
 /// Light-mode GitHub page stylesheet embedded from `assets/github.css`.
@@ -29,6 +34,12 @@ const PAGE_CSS: &str = include_str!("../assets/github.css");
 /// Dark-mode GitHub page stylesheet overrides embedded from `assets/github-dark.css`.
 const DARK_CSS: &str = include_str!("../assets/github-dark.css");
 
+// Rust note (`LazyLock<SyntaxSet>` and `LazyLock<ThemeSet>`):
+//   `syntect` bundles compressed Sublime Text syntax definitions and `.tmTheme`
+//   color schemes inside the binary and deserializes them on load. Wrapping
+//   them in `LazyLock` deserializes the grammar and theme sets once on first
+//   access and shares them immutably across all threads (`SyntaxSet` and
+//   `ThemeSet` both implement `Sync`).
 /// Lazily initialized default `syntect` syntax definitions.
 static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(SyntaxSet::load_defaults_newlines);
 
@@ -36,6 +47,14 @@ static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(SyntaxSet::load_defaults_
 static THEME_SET: LazyLock<ThemeSet> = LazyLock::new(ThemeSet::load_defaults);
 
 /// Starting color scheme for the rendered page.
+///
+/// - `#[derive(Copy)]`: Because `Theme` is a fieldless enum (occupying a single
+///   byte in memory), deriving `Copy` lets it be passed by value (`self` instead
+///   of `&self`) without moving ownership, just like a primitive integer or
+///   Java `enum` reference.
+/// - `#[default]` on `Auto`: Marks `Theme::Auto` as the `Default::default()`
+///   variant (matching Go's zero-value `auto = ""` default, but type-safe so an
+///   invalid string like `theme("purple")` cannot exist).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Theme {
@@ -50,6 +69,9 @@ pub enum Theme {
 
 impl Theme {
     /// Returns the lowercase string identifier (`"auto"`, `"light"`, or `"dark"`).
+    ///
+    /// Notice `self` (by value) rather than `&self`: for small `Copy` types,
+    /// Rust convention takes `self` by value to avoid unnecessary pointer indirection.
     pub fn as_str(self) -> &'static str {
         match self {
             Theme::Auto => "auto",
@@ -67,6 +89,10 @@ impl fmt::Display for Theme {
 
 /// A syntax highlighting choice in the page's top-bar menu, pairing a light
 /// and dark [`syntect`] theme name.
+///
+/// Notice `pub(crate)` on `light` and `dark`: this is Rust's equivalent of
+/// Java's package-private visibility—visible to all modules inside the `mdp`
+/// crate, but hidden from external consumers of the library.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CodeStyle {
     /// Short identifier used in `data-code-style` and `<option value="...">`.
@@ -80,6 +106,10 @@ pub struct CodeStyle {
 }
 
 /// Curated code styles always included in the top-bar style switcher menu.
+///
+/// All fields hold `'static` references (`&'static str` and `&'static [&'static str]`),
+/// so the entire `BUILTIN_STYLES` table lives in read-only static memory (`const`)
+/// with zero heap allocation at startup.
 struct BuiltinStyle {
     id: &'static str,
     label: &'static str,
@@ -215,6 +245,13 @@ pub fn code_styles(opts: &Options) -> (Vec<CodeStyle>, String) {
         })
         .collect();
 
+    // Borrowing note (`choices.iter_mut().find(...)`):
+    //   `.iter_mut()` yields `&mut CodeStyle` references into `choices`, so
+    //   `found` has type `&mut CodeStyle`. Mutating `found.selected = true`
+    //   modifies the element inside `choices` in place! Because `found` borrows
+    //   `choices` mutably, we clone `found.id` into `selected` (ending the
+    //   mutable borrow of `choices` via Non-Lexical Lifetimes, NLL) before
+    //   moving `choices` into the return tuple `(choices, selected)`.
     if let Some(found) = choices
         .iter_mut()
         .find(|c| c.light == light && c.dark == dark)
@@ -322,6 +359,10 @@ pub fn highlight_code(code: &str, lang: &str) -> String {
         );
     }
 
+    // `let Some(syntax) = ... else { return ...; }` (let-else statement,
+    // stabilized in Rust 1.65): binds `syntax` in the outer scope if the
+    // `Option` is `Some`, or diverges (returns early) in the `else` block,
+    // avoiding rightward drift from nested `match` / `if let` blocks.
     let Some(syntax) = SYNTAX_SET
         .find_syntax_by_token(lang)
         .filter(|s| s.name != "Plain Text")
@@ -333,15 +374,12 @@ pub fn highlight_code(code: &str, lang: &str) -> String {
         );
     };
 
-    if syntax.name == "Plain Text" {
-        return format!(
-            "<pre class=\"chroma\"><code>{}</code></pre>\n",
-            crate::github::escape_html(code)
-        );
-    }
-
     let mut generator =
         ClassedHTMLGenerator::new_with_class_style(syntax, &SYNTAX_SET, CLASS_STYLE);
+    // `LinesWithEndings::from(code)` is a custom iterator provided by `syntect`
+    // that yields `&str` slices of `code` *including* their trailing `\n`
+    // (unlike `str::lines()`, which strips `\n`), because Sublime Text's regex
+    // grammar rules rely on matching `\n` at the end of single-line comments.
     for line in LinesWithEndings::from(code) {
         let _ = generator.parse_html_for_line_which_includes_newline(line);
     }

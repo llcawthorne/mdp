@@ -34,6 +34,9 @@ pub fn run_pdf(cfg: &Config, page: &[u8], out: &mut dyn Write) -> Result<()> {
 
 /// Returns the default PDF output path for `filename`: alongside the Markdown
 /// file with its extension replaced by `.pdf`.
+///
+/// Compare [`Path::with_extension`] to Go's `strings.TrimSuffix(filename, filepath.Ext(filename)) + ".pdf"`:
+/// standard-library [`Path`] methods handle extension replacement natively.
 pub fn pdf_path(filename: &Path) -> PathBuf {
     filename.with_extension("pdf")
 }
@@ -41,6 +44,11 @@ pub fn pdf_path(filename: &Path) -> PathBuf {
 /// Launches headless Chrome to print `page` (a complete HTML document) to `pdf_name`.
 pub fn print_pdf(page: &[u8], pdf_name: &Path) -> Result<()> {
     let chrome = find_chrome()?;
+    // RAII cleanup (`tempfile::TempDir` vs. Go's `defer os.RemoveAll(dir)`):
+    //   `temp_dir` owns the temporary directory on disk. When `temp_dir` goes
+    //   out of scope at the end of `print_pdf`—whether via the final `Ok(())`
+    //   or any early `?` / `bail!` return—its `Drop` implementation
+    //   automatically deletes the directory and Chrome's temporary profile!
     let temp_dir = tempfile::Builder::new()
         .prefix("mdp")
         .tempdir()
@@ -96,6 +104,15 @@ pub fn pdf_theme(th: Theme) -> Theme {
     pdf_theme_with(th, os_prefers_dark)
 }
 
+// Rust testing idiom (`impl FnOnce() -> bool` vs. Go's mutable `var osPrefersDark`):
+//   In the Go version (`pdf.go`), `osPrefersDark` was a mutable package-level
+//   function variable (`var osPrefersDark = func() bool { ... }`) that tests
+//   temporarily overwrote. In Rust, mutable globals (`static mut`) are `unsafe`
+//   because Cargo runs unit tests in parallel across multiple threads by default!
+//   Extracting `pdf_theme_with(th, prefers_dark: impl FnOnce() -> bool)` lets
+//   `pdf_theme` pass `os_prefers_dark` while parallel unit tests pass `|| true`
+//   or `|| false` with zero shared mutable state and zero dynamic-dispatch overhead
+//   (`impl FnOnce` is monomorphized at compile time).
 /// Resolves the effective PDF color theme using a caller-supplied dark-mode
 /// detector (enabling deterministic unit tests without shelling out to the OS).
 pub fn pdf_theme_with(th: Theme, prefers_dark: impl FnOnce() -> bool) -> Theme {
@@ -114,6 +131,8 @@ pub fn pdf_theme_with(th: Theme, prefers_dark: impl FnOnce() -> bool) -> Theme {
 
 /// Queries the operating system to determine whether dark mode is active.
 pub fn os_prefers_dark() -> bool {
+    // `cfg!(target_os = "...")` evaluates to a compile-time `bool` constant based
+    // on the target platform, similar to Go's `runtime.GOOS == "darwin"`.
     if cfg!(target_os = "macos") {
         Command::new("defaults")
             .args(["read", "-g", "AppleInterfaceStyle"])
@@ -204,6 +223,8 @@ pub fn find_chrome() -> Result<PathBuf> {
 
 /// Searches the `PATH` environment variable for an executable named `binary`.
 fn find_in_path(binary: &str) -> Option<PathBuf> {
+    // Notice `?` on `Option`: inside a function returning `Option<PathBuf>`,
+    // `env::var_os("PATH")?` unwraps `Some(path_var)` or immediately returns `None`.
     let path_var = env::var_os("PATH")?;
     for dir in env::split_paths(&path_var) {
         let candidate = dir.join(binary);

@@ -9,6 +9,19 @@ use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 
+// Ownership & RAII gotcha in test helpers (`(tempfile::TempDir, PathBuf, SocketAddr)`):
+//   In Go's `newTestWatcher(t *testing.T)`, `t.TempDir()` registers a cleanup
+//   callback on `t` that deletes the directory when the test finishes.
+//   In Rust, `tempfile::TempDir` deletes the directory on `Drop`—as soon as the
+//   `TempDir` value goes out of scope! If `spawn_test_watcher` didn't return
+//   `temp` in its return tuple, `temp` would be dropped at the end of
+//   `spawn_test_watcher()` and delete `test1.md` before the caller could make a
+//   single HTTP request!
+//   Notice how callers bind `let (_temp, _file, addr) = spawn_test_watcher().await;`
+//   with a leading underscore (`_temp`)—NOT a bare `_`! In Rust:
+//     - `let _temp = ...` binds the value to a named local variable (suppressing
+//       the unused-variable warning) that lives until the end of the function scope.
+//     - `let _ = ...` drops the value *immediately* on that statement!
 /// Copies `testdata/test1.md` into a temporary directory and spawns an
 /// ephemeral HTTP server backed by [`Watcher`].
 async fn spawn_test_watcher() -> (tempfile::TempDir, PathBuf, std::net::SocketAddr) {
@@ -22,6 +35,9 @@ async fn spawn_test_watcher() -> (tempfile::TempDir, PathBuf, std::net::SocketAd
     );
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
     let addr = listener.local_addr().expect("local_addr");
+    // `tokio::spawn` launches an asynchronous task on the test's Tokio runtime
+    // (analogous to `go http.Serve(...)` in Go). When the `#[tokio::test]`
+    // function finishes, its Tokio runtime shuts down and aborts this background task.
     tokio::spawn(async move {
         let _ = axum::serve(listener, watcher.router()).await;
     });
@@ -49,6 +65,8 @@ async fn http_get(addr: std::net::SocketAddr, path: &str) -> (u16, String) {
     (status, body.to_string())
 }
 
+// `#[tokio::test]` is an attribute macro that wraps an `async fn` test in a
+// dedicated single-threaded Tokio runtime (`Runtime::new().block_on(...)`).
 #[tokio::test]
 async fn watch_serves_page_with_reload_script() {
     let (_temp, _file, addr) = spawn_test_watcher().await;
@@ -142,7 +160,12 @@ async fn expect_reload(addr: std::net::SocketAddr, url_path: &str, file: &PathBu
         }
     }
 
-    // Verify no reload is sent before the file changes
+    // Async timeout note (`tokio::time::timeout` vs. Go's `select { case <-time.After(...): }`):
+    //   In Rust, any `Future` can be given a deadline by wrapping it in
+    //   `tokio::time::timeout(duration, future)`. If the inner future doesn't
+    //   complete before `duration` elapses, `timeout` drops (cancels) the inner
+    //   future and returns `Err(Elapsed)`. Here we assert `premature.is_err()`
+    //   to verify that NO `data: reload` event arrived during the 60ms window!
     let premature = tokio::time::timeout(Duration::from_millis(60), async {
         loop {
             let mut l = String::new();

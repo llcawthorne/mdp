@@ -1,37 +1,114 @@
 [package]
 name = "mdp"
 version = "0.1.0"
+# Rust 2024 edition (stabilized in Rust 1.85): enables modern language defaults
+# such as `let` chains (`if let Some(x) = a && x.is_valid()`) and stricter
+# lifetime capture rules (`use<...>` in `impl Trait`).
 edition = "2024"
 rust-version = "1.88.0"
 description = "A GitHub-styled Markdown previewer and PDF generator"
 license = "MIT"
 repository = "https://github.com/llcawthorne/mdp"
 
+# Compiler lints configured in Cargo.toml (introduced in Cargo 1.74) apply
+# across all targets in the package without needing `#![warn(...)]` attributes
+# in every root file:
+#   - `missing_docs = "warn"`: warns whenever a `pub` module, struct, enum,
+#     field, or function lacks a `///` or `//!` doc comment (similar to
+#     Checkstyle's `JavadocMethod` / `JavadocType` in Java).
+#   - `rust_2018_idioms = "warn"`: requires explicit lifetime elision markers
+#     like `Cow<'_, str>` on return types so hidden borrows are visible in
+#     function signatures.
 [lints.rust]
 missing_docs = "warn"
 rust_2018_idioms = "warn"
 
 [dependencies]
+# HTML sanitizer (Rust equivalent of Go's `bluemonday` or Java's OWASP HTML
+# Sanitizer). Built on Servo's HTML5 parser (`html5ever`), it parses untrusted
+# HTML into a DOM fragment, strips disallowed elements/attributes/URL schemes
+# (`javascript:`, `data:`), and serializes safe HTML.
 ammonia = "4"
+
+# Idiomatic application-level error handling (cribbed from `mdBook`).
+# `anyhow::Result<T>` wraps any `std::error::Error` into a type-erased error
+# with `.context("...")` chaining—like an ergonomic, zero-boilerplate version
+# of Java's `new RuntimeException("context", cause)`.
 anyhow = "1.0.104"
+
+# Ergonomic async HTTP routing and Server-Sent Events (SSE) framework built on
+# Tokio and Hyper (used by `mdBook` for `mdbook serve`). Extractors like
+# `State(Arc<Watcher>)` and `Query(EventQuery)` are resolved at compile time
+# via trait implementations rather than runtime reflection.
 axum = "0.8.9"
+
+# RFC 4648 base64 encoding for inlining local images (`data:image/png;base64,...`)
+# and KaTeX WOFF2 fonts (`data:font/woff2;base64,...`).
 base64 = "0.22"
+
+# Declarative CLI parser (replaces Go's `pflag`). `features = ["derive"]`
+# generates the argument parser at compile time from `#[derive(Parser)]` on a
+# struct, eliminating the pointer-based `fs.BoolVarP(&cfg.skip, ...)` boilerplate.
 clap = { version = "4.6.5", features = ["derive", "wrap_help"] }
+
+# GitHub `:shortcode:` emoji lookup table (`:rocket:` -> 🚀).
 emojis = "0.6"
+
+# Stream combinators (`futures_util::stream::unfold`) used to build the async
+# Server-Sent Events stream in `watch.rs`.
 futures-util = "0.3.33"
+
+# Handlebars template engine (cribbed directly from `mdBook`). Renders
+# `assets/page.hbs` using a strongly-typed `#[derive(Serialize)]` context struct.
 handlebars = "6.4.3"
+
+# Maps file extensions (`.png`, `.svg`, `.css`) to MIME `Content-Type` strings
+# when inlining images or serving static files in `--watch` mode.
 mime_guess = "2"
+
+# Opens files or URLs in the OS default browser/viewer (`open` on macOS,
+# `xdg-open` on Linux, `ShellExecuteW` on Windows)—cribbed from `mdBook`.
 opener = "0.8.5"
+
+# RFC 3986 percent-encoding/decoding for heading `#fragment` links in the TOC
+# and URL-escaped local image paths (`my%20dot.png`).
 percent-encoding = "2"
+
+# Fast pull-parser for CommonMark and GitHub Flavored Markdown (cribbed from
+# `mdBook`). Unlike AST-based parsers (like Go's Goldmark), `pulldown-cmark`
+# yields a flat iterator of `Event<'a>` tokens borrowing slices directly from
+# the input Markdown string (`CowStr<'a>`).
 pulldown-cmark = { version = "0.13.5", default-features = false, features = ["html"] }
+
+# Regular expressions backed by a finite-automaton engine with guaranteed O(n)
+# linear-time matching (no catastrophic backtracking).
 regex = "1.13.1"
+
+# Compile-time serialization/deserialization framework (`#[derive(Serialize, Deserialize)]`).
+# Uses procedural macros instead of runtime reflection.
 serde = { version = "1.0.229", features = ["derive"] }
+
+# YAML parser used to parse `---` front matter blocks into `serde_yaml::Value`.
 serde_yaml = "0.9"
+
+# Sublime Text syntax-definition highlighter (`default-fancy` uses pure-Rust
+# `fancy-regex` instead of the C `oniguruma` library so builds need no C toolchain).
 syntect = { version = "5.2", default-features = false, features = ["default-fancy"] }
+
+# RAII temporary files and directories (`TempDir` deletes its directory in
+# `Drop::drop` when it goes out of scope, replacing Go's `defer os.RemoveAll(dir)`).
 tempfile = "3.27.0"
+
+# Async runtime powering `axum` and SSE file polling in `watch.rs`.
 tokio = { version = "1.53.3", features = ["macros", "rt-multi-thread", "net", "time", "sync", "fs", "io-util"] }
+
+# WHATWG URL parser and `Url::from_file_path` builder for headless Chrome `file://` URLs.
 url = "2.5"
 
+# Single-binary integration test harness (cribbed from `mdBook`).
+# By default, Cargo compiles every `tests/*.rs` file into a separate executable.
+# Pointing a single `[[test]]` target at `tests/testsuite/main.rs` links all
+# integration test modules once into a single fast binary.
 [[test]]
 name = "testsuite"
 path = "tests/testsuite/main.rs"
