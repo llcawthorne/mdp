@@ -210,8 +210,9 @@ fn parse_args_flags_and_validation() {
 
     // Error cases
     let err_cases: &[(&[&str], &str)] = &[
-        (&["-s"], "exactly one"),
-        (&["a.md", "b.md"], "exactly one"),
+        (&[], "Usage: mdp"),
+        (&["-s"], "expected exactly one"),
+        (&["a.md", "b.md"], "expected exactly one"),
         (&["-w", "-o", "x.html", "a.md"], "--watch can't"),
         (&["-wp", "a.md"], "--watch can't"),
         (&["-we", "a.md"], "--watch can't"),
@@ -263,8 +264,8 @@ fn code_style_menu() {
     );
     assert!(html.contains(r#" data-code-style="custom""#));
 
-    // All 5 curated styles have their CSS rules embedded
-    for id in ["github", "solarized", "ocean", "eighties", "mocha"] {
+    // Curated styles have their CSS rules embedded
+    for id in ["github", "solarized", "ocean", "darcula", "railscasts", "mocha"] {
         for th in ["light", "dark"] {
             let needle = format!(r#":root[data-theme="{th}"][data-code-style="{id}"] .chroma"#);
             assert!(html.contains(&needle), "missing {needle}");

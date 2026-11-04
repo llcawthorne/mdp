@@ -39,6 +39,9 @@ const GITHUB_DARK_THEME: &str = include_str!("../assets/GitHub-Dark.tmTheme");
 /// Embedded Darcula `.tmTheme` (`assets/Darcula.tmTheme`).
 const DARCULA_THEME: &str = include_str!("../assets/Darcula.tmTheme");
 
+/// Embedded Railscasts `.tmTheme` (`assets/Railscasts.tmTheme`).
+const RAILSCASTS_THEME: &str = include_str!("../assets/Railscasts.tmTheme");
+
 /// Lazily initialized `syntect` syntax definitions, including default syntaxes and TOML.
 static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(|| {
     let mut builder = SyntaxSet::load_defaults_newlines().into_builder();
@@ -49,7 +52,7 @@ static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(|| {
 });
 
 /// Lazily initialized `syntect` theme collection, including default themes,
-/// official GitHub Dark, and JetBrains Darcula.
+/// official GitHub Dark, JetBrains Darcula, and Railscasts.
 static THEME_SET: LazyLock<ThemeSet> = LazyLock::new(|| {
     let mut ts = ThemeSet::load_defaults();
     if let Ok(t) = ThemeSet::load_from_reader(&mut Cursor::new(GITHUB_DARK_THEME.as_bytes())) {
@@ -57,6 +60,9 @@ static THEME_SET: LazyLock<ThemeSet> = LazyLock::new(|| {
     }
     if let Ok(t) = ThemeSet::load_from_reader(&mut Cursor::new(DARCULA_THEME.as_bytes())) {
         ts.themes.insert("Darcula".to_string(), t);
+    }
+    if let Ok(t) = ThemeSet::load_from_reader(&mut Cursor::new(RAILSCASTS_THEME.as_bytes())) {
+        ts.themes.insert("Railscasts".to_string(), t);
     }
     ts
 });
@@ -114,7 +120,7 @@ struct BuiltinStyle {
     dark: &'static str,
 }
 
-/// The five built-in syntax highlighting families.
+/// The built-in syntax highlighting families.
 const BUILTIN_STYLES: &[BuiltinStyle] = &[
     BuiltinStyle {
         id: "github",
@@ -138,11 +144,18 @@ const BUILTIN_STYLES: &[BuiltinStyle] = &[
         dark: "base16-ocean.dark",
     },
     BuiltinStyle {
-        id: "eighties",
+        id: "darcula",
         label: "Darcula",
-        aliases: &["eighties", "darcula"],
+        aliases: &["darcula", "eighties"],
         light: "Darcula",
         dark: "Darcula",
+    },
+    BuiltinStyle {
+        id: "railscasts",
+        label: "Railscasts",
+        aliases: &["railscasts"],
+        light: "Railscasts",
+        dark: "Railscasts",
     },
     BuiltinStyle {
         id: "mocha",
@@ -165,8 +178,8 @@ pub fn available_styles() -> &'static [&'static str] {
         "ocean",
         "ocean-light",
         "ocean-dark",
-        "eighties",
         "darcula",
+        "railscasts",
         "mocha",
     ]
 }
@@ -206,6 +219,7 @@ pub fn resolve_theme_name(name: &str, for_dark: bool) -> String {
         "ocean-light" => return "base16-ocean.light".to_string(),
         "ocean-dark" => return "base16-ocean.dark".to_string(),
         "darcula" => return "Darcula".to_string(),
+        "railscasts" => return "Railscasts".to_string(),
         _ => {}
     }
     for s in BUILTIN_STYLES {
