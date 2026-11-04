@@ -26,6 +26,17 @@ fn parse_content_highlights_code() {
     ] {
         assert!(html.contains(want), "result missing {want:?}");
     }
+
+    // Verify TOML syntax highlighting
+    let toml_input = b"```toml\n[dependencies]\nrand = \"0.8.5\"\n```\n";
+    let toml_res = parse_content(toml_input, Path::new(INPUT_FILE), &Options::default())
+        .expect("parse toml content");
+    let toml_html = String::from_utf8_lossy(&toml_res);
+    assert!(
+        toml_html.contains(r#"<span class="sy-entity sy-name sy-section sy-table sy-toml">dependencies</span>"#)
+            || toml_html.contains("sy-toml"),
+        "TOML code block should be highlighted with sy-toml classes, got:\n{toml_html}"
+    );
 }
 
 #[test]
@@ -89,7 +100,7 @@ fn parse_content_theme() {
     const LIGHT_CODE: &str =
         r#":root[data-theme="light"][data-code-style="github"] .chroma { background-color: var(--pre-bg); }"#;
     const DARK_CODE: &str =
-        r#":root[data-theme="dark"][data-code-style="github"] .chroma { background-color: #2b303b;"#;
+        r#":root[data-theme="dark"][data-code-style="github"] .chroma { background-color: #24292e;"#;
 
     let cases = [
         (Theme::Auto, r#"data-theme="light""#, r#"let choice = "auto";"#),
@@ -117,7 +128,7 @@ fn parse_args_flags_and_validation() {
         toc: false,
         theme: Theme::Auto,
         light_style: "InspiredGitHub".to_string(),
-        dark_style: "base16-ocean.dark".to_string(),
+        dark_style: "GitHub Dark".to_string(),
         served: false,
     };
 
@@ -195,7 +206,7 @@ fn parse_args_flags_and_validation() {
     )
     .expect("dark-style override");
     assert_eq!(got.opts.light_style, "InspiredGitHub");
-    assert_eq!(got.opts.dark_style, "base16-eighties.dark");
+    assert_eq!(got.opts.dark_style, "Darcula");
 
     // Error cases
     let err_cases: &[(&[&str], &str)] = &[

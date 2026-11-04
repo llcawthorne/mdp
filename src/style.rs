@@ -11,10 +11,11 @@ use anyhow::Result;
 use regex::Regex;
 use serde::Serialize;
 use std::fmt;
+use std::io::Cursor;
 use std::sync::LazyLock;
 use syntect::highlighting::ThemeSet;
 use syntect::html::{ClassStyle, ClassedHTMLGenerator, css_for_theme_with_class_style};
-use syntect::parsing::SyntaxSet;
+use syntect::parsing::{SyntaxSet, syntax_definition::SyntaxDefinition};
 use syntect::util::LinesWithEndings;
 
 /// Default code syntax highlighting style name.
@@ -29,11 +30,36 @@ const PAGE_CSS: &str = include_str!("../assets/github.css");
 /// Dark-mode GitHub page stylesheet overrides embedded from `assets/github-dark.css`.
 const DARK_CSS: &str = include_str!("../assets/github-dark.css");
 
-/// Lazily initialized default `syntect` syntax definitions.
-static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(SyntaxSet::load_defaults_newlines);
+/// Embedded TOML syntax definition (`assets/TOML.sublime-syntax`).
+const TOML_SYNTAX: &str = include_str!("../assets/TOML.sublime-syntax");
 
-/// Lazily initialized default `syntect` theme collection.
-static THEME_SET: LazyLock<ThemeSet> = LazyLock::new(ThemeSet::load_defaults);
+/// Embedded GitHub Dark `.tmTheme` (`assets/GitHub-Dark.tmTheme`).
+const GITHUB_DARK_THEME: &str = include_str!("../assets/GitHub-Dark.tmTheme");
+
+/// Embedded Darcula `.tmTheme` (`assets/Darcula.tmTheme`).
+const DARCULA_THEME: &str = include_str!("../assets/Darcula.tmTheme");
+
+/// Lazily initialized `syntect` syntax definitions, including default syntaxes and TOML.
+static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(|| {
+    let mut builder = SyntaxSet::load_defaults_newlines().into_builder();
+    if let Ok(toml_def) = SyntaxDefinition::load_from_str(TOML_SYNTAX, true, Some("toml")) {
+        builder.add(toml_def);
+    }
+    builder.build()
+});
+
+/// Lazily initialized `syntect` theme collection, including default themes,
+/// official GitHub Dark, and JetBrains Darcula.
+static THEME_SET: LazyLock<ThemeSet> = LazyLock::new(|| {
+    let mut ts = ThemeSet::load_defaults();
+    if let Ok(t) = ThemeSet::load_from_reader(&mut Cursor::new(GITHUB_DARK_THEME.as_bytes())) {
+        ts.themes.insert("GitHub Dark".to_string(), t);
+    }
+    if let Ok(t) = ThemeSet::load_from_reader(&mut Cursor::new(DARCULA_THEME.as_bytes())) {
+        ts.themes.insert("Darcula".to_string(), t);
+    }
+    ts
+});
 
 /// Starting color scheme for the rendered page.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
@@ -95,7 +121,7 @@ const BUILTIN_STYLES: &[BuiltinStyle] = &[
         label: "GitHub",
         aliases: &["github", "github-light", "github-dark"],
         light: "InspiredGitHub",
-        dark: "base16-ocean.dark",
+        dark: "GitHub Dark",
     },
     BuiltinStyle {
         id: "solarized",
@@ -113,10 +139,10 @@ const BUILTIN_STYLES: &[BuiltinStyle] = &[
     },
     BuiltinStyle {
         id: "eighties",
-        label: "Eighties",
+        label: "Darcula",
         aliases: &["eighties", "darcula"],
-        light: "base16-eighties.dark",
-        dark: "base16-eighties.dark",
+        light: "Darcula",
+        dark: "Darcula",
     },
     BuiltinStyle {
         id: "mocha",
@@ -174,11 +200,12 @@ pub fn resolve_theme_name(name: &str, for_dark: bool) -> String {
     let lower = name.to_ascii_lowercase();
     match lower.as_str() {
         "github-light" => return "InspiredGitHub".to_string(),
-        "github-dark" => return "base16-ocean.dark".to_string(),
+        "github-dark" => return "GitHub Dark".to_string(),
         "solarized-light" => return "Solarized (light)".to_string(),
         "solarized-dark" => return "Solarized (dark)".to_string(),
         "ocean-light" => return "base16-ocean.light".to_string(),
         "ocean-dark" => return "base16-ocean.dark".to_string(),
+        "darcula" => return "Darcula".to_string(),
         _ => {}
     }
     for s in BUILTIN_STYLES {
