@@ -10,7 +10,7 @@
 			<key>settings</key>
 			<dict>
 				<key>background</key>
-				<string>#2B2B2B</string>
+				<string>#232323</string>
 				<key>caret</key>
 				<string>#FFFFFF</string>
 				<key>foreground</key>
@@ -27,17 +27,6 @@
 				<string>#FFE792</string>
 				<key>findHighlightForeground</key>
 				<string>#000000</string>
-			</dict>
-		</dict>
-		<dict>
-			<key>name</key>
-			<string>Source</string>
-			<key>scope</key>
-			<string>source</string>
-			<key>settings</key>
-			<dict>
-				<key>background</key>
-				<string>#232323</string>
 			</dict>
 		</dict>
 		<dict>
