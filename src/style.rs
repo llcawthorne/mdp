@@ -42,6 +42,30 @@ const DARCULA_THEME: &str = include_str!("../assets/Darcula.tmTheme");
 /// Embedded Railscasts `.tmTheme` (`assets/Railscasts.tmTheme`).
 const RAILSCASTS_THEME: &str = include_str!("../assets/Railscasts.tmTheme");
 
+/// Embedded Railscasts Neovim `.tmTheme` (`assets/railscasts-neovim.tmTheme`).
+const RAILSCASTS_NEOVIM_THEME: &str = include_str!("../assets/railscasts-neovim.tmTheme");
+
+/// Embedded Railscasts VSCode `.tmTheme` (`assets/railscasts-vscode.tmTheme`).
+const RAILSCASTS_VSCODE_THEME: &str = include_str!("../assets/railscasts-vscode.tmTheme");
+
+/// Embedded TokyoNight Night `.tmTheme` (`assets/tokyonight_night.tmTheme`).
+const TOKYONIGHT_NIGHT_THEME: &str = include_str!("../assets/tokyonight_night.tmTheme");
+
+/// Embedded TokyoNight Day `.tmTheme` (`assets/tokyonight_day.tmTheme`).
+const TOKYONIGHT_DAY_THEME: &str = include_str!("../assets/tokyonight_day.tmTheme");
+
+/// Embedded Abyss `.tmTheme` (`assets/abyss.tmTheme`).
+const ABYSS_THEME: &str = include_str!("../assets/abyss.tmTheme");
+
+/// Embedded Hearth Code Ember Dark `.tmTheme` (`assets/hearth_ember_dark.tmTheme`).
+const HEARTH_EMBER_DARK_THEME: &str = include_str!("../assets/hearth_ember_dark.tmTheme");
+
+/// Embedded Hearth Code Ember Light `.tmTheme` (`assets/hearth_ember_light.tmTheme`).
+const HEARTH_EMBER_LIGHT_THEME: &str = include_str!("../assets/hearth_ember_light.tmTheme");
+
+/// Embedded One Dark Pro Night Flat `.tmTheme` (`assets/onedark_night_flat.tmTheme`).
+const ONEDARK_NIGHT_FLAT_THEME: &str = include_str!("../assets/onedark_night_flat.tmTheme");
+
 /// Lazily initialized `syntect` syntax definitions, including default syntaxes and TOML.
 static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(|| {
     let mut builder = SyntaxSet::load_defaults_newlines().into_builder();
@@ -51,18 +75,26 @@ static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(|| {
     builder.build()
 });
 
-/// Lazily initialized `syntect` theme collection, including default themes,
-/// official GitHub Dark, JetBrains Darcula, and Railscasts.
+/// Lazily initialized `syntect` theme collection, including default themes and custom embedded themes.
 static THEME_SET: LazyLock<ThemeSet> = LazyLock::new(|| {
     let mut ts = ThemeSet::load_defaults();
-    if let Ok(t) = ThemeSet::load_from_reader(&mut Cursor::new(GITHUB_DARK_THEME.as_bytes())) {
-        ts.themes.insert("GitHub Dark".to_string(), t);
-    }
-    if let Ok(t) = ThemeSet::load_from_reader(&mut Cursor::new(DARCULA_THEME.as_bytes())) {
-        ts.themes.insert("Darcula".to_string(), t);
-    }
-    if let Ok(t) = ThemeSet::load_from_reader(&mut Cursor::new(RAILSCASTS_THEME.as_bytes())) {
-        ts.themes.insert("Railscasts".to_string(), t);
+    let themes: &[(&str, &str)] = &[
+        ("GitHub Dark", GITHUB_DARK_THEME),
+        ("Darcula", DARCULA_THEME),
+        ("Railscasts", RAILSCASTS_THEME),
+        ("Railscasts Neovim", RAILSCASTS_NEOVIM_THEME),
+        ("Railscasts VSCode", RAILSCASTS_VSCODE_THEME),
+        ("TokyoNight Night", TOKYONIGHT_NIGHT_THEME),
+        ("TokyoNight Day", TOKYONIGHT_DAY_THEME),
+        ("Abyss", ABYSS_THEME),
+        ("Hearth Code Ember Dark", HEARTH_EMBER_DARK_THEME),
+        ("Hearth Code Ember Light", HEARTH_EMBER_LIGHT_THEME),
+        ("One Dark Pro Night Flat", ONEDARK_NIGHT_FLAT_THEME),
+    ];
+    for &(name, content) in themes {
+        if let Ok(t) = ThemeSet::load_from_reader(&mut Cursor::new(content.as_bytes())) {
+            ts.themes.insert(name.to_string(), t);
+        }
     }
     ts
 });
@@ -158,6 +190,62 @@ const BUILTIN_STYLES: &[BuiltinStyle] = &[
         dark: "Railscasts",
     },
     BuiltinStyle {
+        id: "railscasts-neovim",
+        label: "Railscasts (Neovim)",
+        aliases: &["railscasts-neovim", "railscasts-nvim"],
+        light: "Railscasts Neovim",
+        dark: "Railscasts Neovim",
+    },
+    BuiltinStyle {
+        id: "railscasts-vscode",
+        label: "Railscasts (VS Code)",
+        aliases: &["railscasts-vscode"],
+        light: "Railscasts VSCode",
+        dark: "Railscasts VSCode",
+    },
+    BuiltinStyle {
+        id: "tokyo-night",
+        label: "Tokyo Night",
+        aliases: &[
+            "tokyo-night",
+            "tokyonight",
+            "tokyo-night-dark",
+            "tokyo-night-day",
+        ],
+        light: "TokyoNight Day",
+        dark: "TokyoNight Night",
+    },
+    BuiltinStyle {
+        id: "abyss",
+        label: "Abyss",
+        aliases: &["abyss"],
+        light: "Abyss",
+        dark: "Abyss",
+    },
+    BuiltinStyle {
+        id: "hearth-code",
+        label: "Hearth Code Ember",
+        aliases: &[
+            "hearth-code",
+            "hearth-code-ember",
+            "hearth-code-light",
+            "hearth-code-dark",
+        ],
+        light: "Hearth Code Ember Light",
+        dark: "Hearth Code Ember Dark",
+    },
+    BuiltinStyle {
+        id: "one-dark-pro-night-flat",
+        label: "One Dark Pro Night Flat",
+        aliases: &[
+            "one-dark-pro-night-flat",
+            "onedark-night-flat",
+            "one-dark-pro",
+        ],
+        light: "One Dark Pro Night Flat",
+        dark: "One Dark Pro Night Flat",
+    },
+    BuiltinStyle {
         id: "mocha",
         label: "Mocha",
         aliases: &["mocha"],
@@ -180,6 +268,12 @@ pub fn available_styles() -> &'static [&'static str] {
         "ocean-dark",
         "darcula",
         "railscasts",
+        "railscasts-neovim",
+        "railscasts-vscode",
+        "tokyo-night",
+        "abyss",
+        "hearth-code",
+        "one-dark-pro-night-flat",
         "mocha",
     ]
 }
@@ -220,6 +314,16 @@ pub fn resolve_theme_name(name: &str, for_dark: bool) -> String {
         "ocean-dark" => return "base16-ocean.dark".to_string(),
         "darcula" => return "Darcula".to_string(),
         "railscasts" => return "Railscasts".to_string(),
+        "railscasts-neovim" | "railscasts-nvim" => return "Railscasts Neovim".to_string(),
+        "railscasts-vscode" => return "Railscasts VSCode".to_string(),
+        "tokyo-night-day" => return "TokyoNight Day".to_string(),
+        "tokyo-night-dark" => return "TokyoNight Night".to_string(),
+        "hearth-code-light" => return "Hearth Code Ember Light".to_string(),
+        "hearth-code-dark" => return "Hearth Code Ember Dark".to_string(),
+        "abyss" => return "Abyss".to_string(),
+        "one-dark-pro-night-flat" | "onedark-night-flat" | "one-dark-pro" => {
+            return "One Dark Pro Night Flat".to_string();
+        }
         _ => {}
     }
     for s in BUILTIN_STYLES {
