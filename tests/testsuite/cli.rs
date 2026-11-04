@@ -144,8 +144,9 @@ fn parse_args_flags_and_validation() {
         }
     );
 
-    // Short flags
-    let got = parse_args(["-s", "-w", "-d", "-t", "a.md"], &mut stderr).expect("short flags");
+    // Short flags & style flag
+    let got = parse_args(["--skip", "-w", "-d", "-t", "-s", "railscasts", "a.md"], &mut stderr)
+        .expect("flags");
     assert_eq!(
         got,
         Config {
@@ -155,14 +156,16 @@ fn parse_args_flags_and_validation() {
             opts: Options {
                 toc: true,
                 theme: Theme::Dark,
-                ..default_opts.clone()
+                light_style: "Railscasts".to_string(),
+                dark_style: "Railscasts".to_string(),
+                served: false,
             },
             ..Config::default()
         }
     );
 
     // Combined short flags
-    let got = parse_args(["-swl", "a.md"], &mut stderr).expect("combined short flags");
+    let got = parse_args(["--skip", "-wl", "a.md"], &mut stderr).expect("combined short flags");
     assert_eq!(
         got,
         Config {
@@ -211,7 +214,7 @@ fn parse_args_flags_and_validation() {
     // Error cases
     let err_cases: &[(&[&str], &str)] = &[
         (&[], "Usage: mdp"),
-        (&["-s"], "expected exactly one"),
+        (&["--skip"], "expected exactly one"),
         (&["a.md", "b.md"], "expected exactly one"),
         (&["-w", "-o", "x.html", "a.md"], "--watch can't"),
         (&["-wp", "a.md"], "--watch can't"),
@@ -220,6 +223,7 @@ fn parse_args_flags_and_validation() {
         (&["-p", "-o", "book.epub", "a.md"], "--pdf and --epub"),
         (&["-d", "-l", "a.md"], "together"),
         (&["--style", "nope", "a.md"], r#"unknown style "nope""#),
+        (&["-s", "nope", "a.md"], r#"unknown style "nope""#),
         (&["--dark-style", "nope", "a.md"], r#"unknown style "nope""#),
         (&["--nope", "a.md"], "--nope"),
     ];

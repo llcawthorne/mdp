@@ -115,7 +115,7 @@ pub struct Config {
 )]
 struct Cli {
     /// Skip auto-preview; just print the file path or URL.
-    #[arg(short = 's', long = "skip")]
+    #[arg(long = "skip")]
     skip: bool,
 
     /// Open the table of contents drawer by default.
@@ -147,7 +147,7 @@ struct Cli {
     light: bool,
 
     /// Code highlighting style (github, solarized, ocean, darcula, railscasts, mocha).
-    #[arg(long = "style", default_value = DEFAULT_STYLE, value_name = "STYLE")]
+    #[arg(short = 's', long = "style", default_value = DEFAULT_STYLE, value_name = "STYLE")]
     style: String,
 
     /// Code highlighting style for dark mode only.
