@@ -586,12 +586,40 @@ pub fn highlight_code_inline(code: &str, lang: &str, theme_name: &str) -> String
 
     highlighted_html_for_string(code, &SYNTAX_SET, syntax, theme)
         .map(|html| {
-            // Wrap inner content with <pre class="chroma"><code>...</code></pre>
-            if let Some(stripped) = html.strip_prefix("<pre ") {
+            // E-reader user-agent styles (e.g. Apple Books in Dark mode) inject rules like
+            // `* { color: inherit !important; }`. Adding `!important` to each inline style
+            // declaration guarantees e-reader reader themes do not wash out code token colors.
+            let with_important = add_important_to_styles(&html);
+            if let Some(stripped) = with_important.strip_prefix("<pre ") {
                 format!("<pre class=\"chroma\" {stripped}")
             } else {
-                html
+                with_important
             }
         })
         .unwrap_or_else(|_| highlight_code(code, lang))
+}
+
+/// Appends `!important` to every CSS property in `style="..."` attributes.
+fn add_important_to_styles(html: &str) -> String {
+    static STYLE_ATTR_RE: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r#"style="([^"]+)""#).expect("valid style regex"));
+
+    STYLE_ATTR_RE
+        .replace_all(html, |caps: &regex::Captures<'_>| {
+            let decls = &caps[1];
+            let modified: Vec<String> = decls
+                .split(';')
+                .map(|d| d.trim())
+                .filter(|d| !d.is_empty())
+                .map(|d| {
+                    if d.contains("!important") {
+                        d.to_string()
+                    } else {
+                        format!("{d} !important")
+                    }
+                })
+                .collect();
+            format!(r#"style="{};""#, modified.join("; "))
+        })
+        .into_owned()
 }

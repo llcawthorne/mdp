@@ -67,9 +67,18 @@ pub fn write_epub(input: &[u8], filename: &Path, opts: &Options, epub_name: &Pat
         .with_context(|| format!("failed to write EPUB to {}", epub_name.display()))
 }
 
+/// Resolves the effective color theme for EPUB output.
+///
+/// Like PDF output, EPUB reader environments cannot execute dynamic JavaScript
+/// theme switchers. Therefore, [`Theme::Auto`] queries [`crate::pdf::os_prefers_dark`].
+pub fn epub_theme(th: Theme) -> Theme {
+    crate::pdf::pdf_theme(th)
+}
+
 /// Renders `input` Markdown bytes into an in-memory EPUB 3 archive.
 pub fn build_epub(input: &[u8], filename: &Path, opts: &Options) -> Result<Vec<u8>> {
-    let active_theme_name = if opts.theme == Theme::Dark {
+    let effective_theme = epub_theme(opts.theme);
+    let active_theme_name = if effective_theme == Theme::Dark {
         resolve_theme_name(&opts.dark_style, true)
     } else {
         resolve_theme_name(&opts.light_style, false)
@@ -89,7 +98,7 @@ pub fn build_epub(input: &[u8], filename: &Path, opts: &Options) -> Result<Vec<u
     let nav_xhtml = render_nav_xhtml(&doc.title, &doc.headings);
     let content_xhtml = render_content_xhtml(
         &doc.title,
-        opts.theme,
+        effective_theme,
         &doc.code_style,
         &html_to_xhtml(&doc.body),
     );

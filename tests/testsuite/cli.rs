@@ -518,7 +518,8 @@ fn run_makes_epub() {
     assert!(nav.contains(r#"href="content.xhtml#tasks""#));
 
     let content = read_entry(&mut archive, "EPUB/content.xhtml");
-    assert!(content.contains(r#"data-theme="light" data-code-style="tomorrow-night">"#));
+    let expected_theme = mdp::epub::epub_theme(Theme::Auto);
+    assert!(content.contains(&format!(r#"data-theme="{expected_theme}" data-code-style="tomorrow-night">"#)));
     assert!(content.contains("Book Title"));
     assert!(
         content.contains("<hr />"),
