@@ -19,7 +19,7 @@ use syntect::parsing::{SyntaxSet, syntax_definition::SyntaxDefinition};
 use syntect::util::LinesWithEndings;
 
 /// Default code syntax highlighting style name.
-pub const DEFAULT_STYLE: &str = "tomorrow-night";
+pub const DEFAULT_STYLE: &str = "github";
 
 /// Prefix applied to `syntect` CSS classes on highlighted code tokens.
 const CLASS_STYLE: ClassStyle = ClassStyle::SpacedPrefixed { prefix: "sy-" };

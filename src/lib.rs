@@ -148,7 +148,7 @@ struct Cli {
     #[arg(short = 'l', long = "light")]
     light: bool,
 
-    /// Code highlighting style (tomorrow-night, ayu, railscasts, railscasts-dark, tokyo-night, github, solarized, ocean, darcula, mocha).
+    /// Code highlighting style (github, tomorrow-night, ayu, railscasts, railscasts-dark, tokyo-night, solarized, ocean, darcula, mocha).
     #[arg(short = 's', long = "style", default_value = DEFAULT_STYLE, value_name = "STYLE")]
     style: String,
 
