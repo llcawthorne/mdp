@@ -69,6 +69,12 @@ const TOKYONIGHT_NIGHT_THEME: &str = include_str!("../assets/tokyonight_night.tm
 /// Embedded TokyoNight Day `.tmTheme` (`assets/tokyonight_day.tmTheme`).
 const TOKYONIGHT_DAY_THEME: &str = include_str!("../assets/tokyonight_day.tmTheme");
 
+/// Embedded Tomorrow `.tmTheme` (`assets/tomorrow.tmTheme`).
+const TOMORROW_THEME: &str = include_str!("../assets/tomorrow.tmTheme");
+
+/// Embedded Tomorrow Night `.tmTheme` (`assets/tomorrow-night.tmTheme`).
+const TOMORROW_NIGHT_THEME: &str = include_str!("../assets/tomorrow-night.tmTheme");
+
 /// Embedded One Dark Pro Night Flat `.tmTheme` (`assets/onedark_night_flat.tmTheme`).
 const ONEDARK_NIGHT_FLAT_THEME: &str = include_str!("../assets/onedark_night_flat.tmTheme");
 
@@ -109,6 +115,8 @@ static THEME_SET: LazyLock<ThemeSet> = LazyLock::new(|| {
         ("Railscasts Dark", RAILSCASTS_DARK_THEME),
         ("TokyoNight Night", TOKYONIGHT_NIGHT_THEME),
         ("TokyoNight Day", TOKYONIGHT_DAY_THEME),
+        ("Tomorrow", TOMORROW_THEME),
+        ("Tomorrow Night", TOMORROW_NIGHT_THEME),
         ("One Dark Pro Night Flat", ONEDARK_NIGHT_FLAT_THEME),
     ];
     for &(name, content) in themes {
@@ -229,6 +237,18 @@ const BUILTIN_STYLES: &[BuiltinStyle] = &[
         dark: "TokyoNight Night",
     },
     BuiltinStyle {
+        id: "tomorrow-night",
+        label: "Tomorrow Night",
+        aliases: &[
+            "tomorrow-night",
+            "tomorrow",
+            "tomorrow-night-eighties",
+            "mdbook",
+        ],
+        light: "Tomorrow",
+        dark: "Tomorrow Night",
+    },
+    BuiltinStyle {
         id: "one-dark-pro-night-flat",
         label: "One Dark Pro Night Flat",
         aliases: &[
@@ -264,6 +284,7 @@ pub fn available_styles() -> &'static [&'static str] {
         "railscasts",
         "railscasts-dark",
         "tokyo-night",
+        "tomorrow-night",
         "one-dark-pro-night-flat",
         "mocha",
     ]
@@ -310,6 +331,8 @@ pub fn resolve_theme_name(name: &str, for_dark: bool) -> String {
         }
         "tokyo-night-day" => return "TokyoNight Day".to_string(),
         "tokyo-night-dark" => return "TokyoNight Night".to_string(),
+        "tomorrow" => return "Tomorrow".to_string(),
+        "tomorrow-night" | "mdbook" => return "Tomorrow Night".to_string(),
         "one-dark-pro-night-flat" | "onedark-night-flat" | "one-dark-pro" => {
             return "One Dark Pro Night Flat".to_string();
         }
