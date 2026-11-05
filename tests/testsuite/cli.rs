@@ -327,57 +327,65 @@ fn available_styles_are_known() {
 
 #[test]
 fn parse_content_toc() {
-    let cases: &[(&str, &str, bool, &[&str], &[&str])] = &[
-        (
-            "lone h1 is the title, so the list starts at h2",
-            "# Title\n\n## One\n\n### One A\n\n## Two\n",
-            false,
-            &[r#"<nav class="toc""#, r##"href="#one""##, r##"href="#one-a""##, r##"href="#two""##],
-            &[r##"href="#title""##],
-        ),
-        (
-            "several h1s are all listed",
-            "# Part 1\n\n## A\n\n# Part 2\n",
-            false,
-            &[r##"href="#part-1""##, r##"href="#a""##, r##"href="#part-2""##],
-            &[],
-        ),
-        (
-            "closed unless asked for",
-            "# Title\n\n## One\n",
-            false,
-            &[r#"<nav class="toc""#, r#"id="toc-toggle""#, r#"aria-expanded="false""#],
-            &[r#"class="toc-open""#],
-        ),
-        (
-            "--toc opens it",
-            "# Title\n\n## One\n",
-            true,
-            &[r#" data-code-style="github" class="toc-open">"#, r#"aria-expanded="true""#],
-            &[],
-        ),
-        (
-            "no headings, no contents or button",
-            "just text\n",
-            true,
-            &[],
-            &["<nav", r#"id="toc-toggle""#, r#"class="toc-open""#],
-        ),
+    struct TocCase<'a> {
+        name: &'a str,
+        input: &'a str,
+        toc: bool,
+        want: &'a [&'a str],
+        not_want: &'a [&'a str],
+    }
+
+    let cases = &[
+        TocCase {
+            name: "lone h1 is the title, so the list starts at h2",
+            input: "# Title\n\n## One\n\n### One A\n\n## Two\n",
+            toc: false,
+            want: &[r#"<nav class="toc""#, r##"href="#one""##, r##"href="#one-a""##, r##"href="#two""##],
+            not_want: &[r##"href="#title""##],
+        },
+        TocCase {
+            name: "several h1s are all listed",
+            input: "# Part 1\n\n## A\n\n# Part 2\n",
+            toc: false,
+            want: &[r##"href="#part-1""##, r##"href="#a""##, r##"href="#part-2""##],
+            not_want: &[],
+        },
+        TocCase {
+            name: "closed unless asked for",
+            input: "# Title\n\n## One\n",
+            toc: false,
+            want: &[r#"<nav class="toc""#, r#"id="toc-toggle""#, r#"aria-expanded="false""#],
+            not_want: &[r#"class="toc-open""#],
+        },
+        TocCase {
+            name: "--toc opens it",
+            input: "# Title\n\n## One\n",
+            toc: true,
+            want: &[r#" data-code-style="github" class="toc-open">"#, r#"aria-expanded="true""#],
+            not_want: &[],
+        },
+        TocCase {
+            name: "no headings, no contents or button",
+            input: "just text\n",
+            toc: true,
+            want: &[],
+            not_want: &["<nav", r#"id="toc-toggle""#, r#"class="toc-open""#],
+        },
     ];
 
-    for &(name, input, toc, want, not_want) in cases {
+    for c in cases {
         let opts = Options {
-            toc,
+            toc: c.toc,
             ..Options::default()
         };
         let result =
-            parse_content(input.as_bytes(), Path::new(INPUT_FILE), &opts).expect("parse_content");
+            parse_content(c.input.as_bytes(), Path::new(INPUT_FILE), &opts).expect("parse_content");
         let html = String::from_utf8_lossy(&result);
-        for &w in want {
-            assert!(html.contains(w), "case {name}: missing {w:?}");
+        for &w in c.want {
+            assert!(html.contains(w), "case {}: missing {w:?}", c.name);
         }
-        for &nw in not_want {
-            assert!(!html.contains(nw), "case {name}: unexpectedly has {nw:?}");
+        for &nw in c.not_want {
+            assert!(!html.contains(nw), "case {}: unexpectedly has {nw:?}", c.name);
         }
     }
 }
