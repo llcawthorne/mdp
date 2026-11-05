@@ -5,7 +5,7 @@
 //! Open Container Format (`.epub`) ZIP archive.
 
 use crate::github::escape_html;
-use crate::render::{FRAGMENT_ENCODE_SET, HeadingEntry, render_document, slug};
+use crate::render::{FRAGMENT_ENCODE_SET, HeadingEntry, render_document_epub, slug};
 use crate::style::{Theme, highlight_css, resolve_theme_name};
 use crate::{Config, Options, preview};
 use anyhow::{Context, Result};
@@ -69,7 +69,12 @@ pub fn write_epub(input: &[u8], filename: &Path, opts: &Options, epub_name: &Pat
 
 /// Renders `input` Markdown bytes into an in-memory EPUB 3 archive.
 pub fn build_epub(input: &[u8], filename: &Path, opts: &Options) -> Result<Vec<u8>> {
-    let doc = render_document(input, filename, opts)?;
+    let active_theme_name = if opts.theme == Theme::Dark {
+        resolve_theme_name(&opts.dark_style, true)
+    } else {
+        resolve_theme_name(&opts.light_style, false)
+    };
+    let doc = render_document_epub(input, filename, opts, &active_theme_name)?;
 
     let book_id = {
         let s = slug(&doc.title);
@@ -93,11 +98,6 @@ pub fn build_epub(input: &[u8], filename: &Path, opts: &Options) -> Result<Vec<u
     // or support multi-attribute `:root[data-theme][data-code-style]` selector scoping.
     // In addition to scoped CSS rules, prepend the direct syntax rules for the active style
     // so every EPUB reader renders syntax highlighting out of the box.
-    let active_theme_name = if opts.theme == Theme::Dark {
-        resolve_theme_name(&opts.dark_style, true)
-    } else {
-        resolve_theme_name(&opts.light_style, false)
-    };
     let direct_highlight_css = highlight_css(&active_theme_name).unwrap_or_default();
     let epub_css = format!("{direct_highlight_css}\n{}", doc.css);
 

@@ -19,7 +19,9 @@ use crate::github::{
     alert_meta, autolink_gfm, escape_html, extract_front_matter, filter_tags, replace_emojis,
 };
 use crate::links::fix_links;
-use crate::style::{CodeStyle, Theme, code_styles, highlight_code, stylesheet};
+use crate::style::{
+    CodeStyle, Theme, code_styles, highlight_code, highlight_code_inline, stylesheet,
+};
 use ammonia::Builder as AmmoniaBuilder;
 use anyhow::{Context, Result};
 use handlebars::Handlebars;
@@ -84,9 +86,9 @@ static SANITIZER: LazyLock<AmmoniaBuilder<'static>> = LazyLock::new(|| {
     builder.add_tags([
         "kbd", "details", "summary", "picture", "source", "input",
     ]);
-    builder.add_tag_attributes("pre", ["class"]);
-    builder.add_tag_attributes("code", ["class"]);
-    builder.add_tag_attributes("span", ["class"]);
+    builder.add_tag_attributes("pre", ["class", "style"]);
+    builder.add_tag_attributes("code", ["class", "style"]);
+    builder.add_tag_attributes("span", ["class", "style"]);
     builder.add_tag_attributes("input", ["type", "checked", "disabled"]);
     for h in ["h1", "h2", "h3", "h4", "h5", "h6"] {
         builder.add_tag_attributes(h, ["id", "align"]);
@@ -157,10 +159,31 @@ pub(crate) fn render_document(
     filename: &Path,
     opts: &Options,
 ) -> Result<RenderedDocument> {
+    render_document_internal(input, filename, opts, None)
+}
+
+/// Renders `input` Markdown bytes into a [`RenderedDocument`] with inline CSS styles on code blocks.
+///
+/// Used by EPUB output to guarantee syntax highlighting in e-readers that ignore class-based CSS.
+pub(crate) fn render_document_epub(
+    input: &[u8],
+    filename: &Path,
+    opts: &Options,
+    theme_name: &str,
+) -> Result<RenderedDocument> {
+    render_document_internal(input, filename, opts, Some(theme_name))
+}
+
+fn render_document_internal(
+    input: &[u8],
+    filename: &Path,
+    opts: &Options,
+    inline_theme: Option<&str>,
+) -> Result<RenderedDocument> {
     let markdown = std::str::from_utf8(input).context("Markdown file is not valid UTF-8")?;
     let (front_matter_html, body_md) = extract_front_matter(markdown);
 
-    let mut rendered = render_markdown_body(body_md, &front_matter_html);
+    let mut rendered = render_markdown_body(body_md, &front_matter_html, inline_theme);
 
     let filtered = filter_tags(&rendered.html);
     let sanitized = SANITIZER.clean(&filtered).to_string();
@@ -219,7 +242,11 @@ fn level_to_u8(level: HeadingLevel) -> u8 {
 
 /// Runs [`pulldown_cmark`] over `body_md`, transforming GFM extensions, code
 /// blocks, headings, math, Mermaid diagrams, and footnotes into an HTML string.
-fn render_markdown_body(body_md: &str, front_matter_html: &str) -> RenderedBody {
+fn render_markdown_body(
+    body_md: &str,
+    front_matter_html: &str,
+    inline_theme: Option<&str>,
+) -> RenderedBody {
     let mut cmark_opts = CmarkOptions::empty();
     cmark_opts.insert(CmarkOptions::ENABLE_TABLES);
     cmark_opts.insert(CmarkOptions::ENABLE_FOOTNOTES);
@@ -273,6 +300,8 @@ fn render_markdown_body(body_md: &str, front_matter_html: &str) -> RenderedBody 
                     } else if lang_trimmed.eq_ignore_ascii_case("mermaid") {
                         uses_mermaid = true;
                         format!("<pre class=\"mermaid\">{}</pre>\n", escape_html(code_buf))
+                    } else if let Some(th) = inline_theme {
+                        highlight_code_inline(code_buf, lang_trimmed, th)
                     } else {
                         highlight_code(code_buf, lang_trimmed)
                     };

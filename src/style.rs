@@ -14,7 +14,9 @@ use std::fmt;
 use std::io::Cursor;
 use std::sync::LazyLock;
 use syntect::highlighting::ThemeSet;
-use syntect::html::{ClassStyle, ClassedHTMLGenerator, css_for_theme_with_class_style};
+use syntect::html::{
+    ClassStyle, ClassedHTMLGenerator, css_for_theme_with_class_style, highlighted_html_for_string,
+};
 use syntect::parsing::{SyntaxSet, syntax_definition::SyntaxDefinition};
 use syntect::util::LinesWithEndings;
 
@@ -530,4 +532,66 @@ pub fn highlight_code(code: &str, lang: &str) -> String {
     }
     let html = generator.finalize();
     format!("<pre class=\"chroma\"><code>{html}</code></pre>\n")
+}
+
+/// Highlights a fenced code block with inline CSS styles for EPUB e-readers.
+///
+/// Many e-readers (such as Apple Books) ignore external class-based stylesheets
+/// on `<span>` tags. Embedding inline `style="..."` attributes guarantees full
+/// color syntax highlighting in every e-reader.
+pub fn highlight_code_inline(code: &str, lang: &str, theme_name: &str) -> String {
+    let lang = lang.split_whitespace().next().unwrap_or("");
+    if lang.is_empty() {
+        return format!(
+            "<pre class=\"chroma\"><code>{}</code></pre>\n",
+            crate::github::escape_html(code)
+        );
+    }
+
+    if lang.eq_ignore_ascii_case("text")
+        || lang.eq_ignore_ascii_case("txt")
+        || lang.eq_ignore_ascii_case("plaintext")
+    {
+        return format!(
+            "<pre class=\"chroma\"><code>{}</code></pre>\n",
+            crate::github::escape_html(code)
+        );
+    }
+
+    let lang_lower = lang.to_ascii_lowercase();
+    let token = match lang_lower.as_str() {
+        "typescript" | "ts" | "tsx" => "js",
+        "shell" | "console" | "zsh" => "bash",
+        "proto" => "protobuf",
+        "dockerfile" => "dockerfile",
+        other => other,
+    };
+
+    let Some(syntax) = SYNTAX_SET
+        .find_syntax_by_token(token)
+        .or_else(|| SYNTAX_SET.find_syntax_by_token(lang))
+        .filter(|s| s.name != "Plain Text")
+    else {
+        return format!(
+            "<pre class=\"chroma\"><code class=\"language-{}\">{}</code></pre>\n",
+            crate::github::escape_html(lang),
+            crate::github::escape_html(code)
+        );
+    };
+
+    let theme = THEME_SET
+        .themes
+        .get(theme_name)
+        .unwrap_or_else(|| &THEME_SET.themes["Tomorrow Night"]);
+
+    highlighted_html_for_string(code, &SYNTAX_SET, syntax, theme)
+        .map(|html| {
+            // Wrap inner content with <pre class="chroma"><code>...</code></pre>
+            if let Some(stripped) = html.strip_prefix("<pre ") {
+                format!("<pre class=\"chroma\" {stripped}")
+            } else {
+                html
+            }
+        })
+        .unwrap_or_else(|_| highlight_code(code, lang))
 }
