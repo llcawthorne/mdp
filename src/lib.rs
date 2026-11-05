@@ -71,6 +71,8 @@ pub struct Options {
     pub light_style: String,
     /// Syntax highlighting style name for dark mode.
     pub dark_style: String,
+    /// Author name (e.g. for EPUB metadata).
+    pub author: Option<String>,
     /// Whether the page is being served over HTTP (`--watch`), keeping relative
     /// links intact instead of converting them to `file://` URLs.
     pub served: bool,
@@ -146,13 +148,17 @@ struct Cli {
     #[arg(short = 'l', long = "light")]
     light: bool,
 
-    /// Code highlighting style (github, solarized, ocean, darcula, railscasts, mocha).
+    /// Code highlighting style (tomorrow-night, ayu, railscasts, railscasts-dark, tokyo-night, github, solarized, ocean, darcula, mocha).
     #[arg(short = 's', long = "style", default_value = DEFAULT_STYLE, value_name = "STYLE")]
     style: String,
 
     /// Code highlighting style for dark mode only.
     #[arg(long = "dark-style", value_name = "STYLE")]
     dark_style: Option<String>,
+
+    /// Document author (embedded in EPUB metadata).
+    #[arg(long = "author", value_name = "AUTHOR")]
+    author: Option<String>,
 
     /// Markdown file to preview or convert.
     #[arg(value_name = "FILE")]
@@ -277,6 +283,7 @@ where
             theme,
             light_style,
             dark_style,
+            author: cli.author,
             served: false,
         },
     })

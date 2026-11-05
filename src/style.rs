@@ -418,7 +418,7 @@ pub fn stylesheet(choices: &[CodeStyle]) -> Result<String> {
 }
 
 /// Generates the raw CSS rules for a single `syntect` theme.
-fn highlight_css(theme_name: &str) -> Result<String> {
+pub fn highlight_css(theme_name: &str) -> Result<String> {
     let theme = THEME_SET
         .themes
         .get(theme_name)
@@ -440,16 +440,33 @@ fn highlight_css(theme_name: &str) -> Result<String> {
     Ok(css)
 }
 
-/// Regex matching top-level selectors in `syntect`-generated CSS.
-static SELECTOR_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?m)^(\.(?:sy-[\w-]+|chroma))\b").expect("valid selector regex"));
+/// Regex matching CSS rules in `syntect`-generated stylesheets.
+static RULE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?s)([^{}]+)\{([^}]+)\}").expect("valid rule regex"));
 
 /// Scopes `syntect` CSS selectors to `[data-theme="<th_name>"][data-code-style="<id>"]`.
 fn scope_css(css: &str, id: &str, th: Theme) -> String {
-    let prefix = format!(r#":root[data-theme="{}"][data-code-style="{}"] "#, th, id);
-    SELECTOR_RE
+    let prefix = format!(r#":root[data-theme="{}"][data-code-style="{}"]"#, th, id);
+    RULE_RE
         .replace_all(css, |caps: &regex::Captures<'_>| {
-            format!("{prefix}{}", &caps[1])
+            let mut selectors_raw = &caps[1];
+            let body = &caps[2];
+            let mut comment = "";
+            if let Some(c_end) = selectors_raw.rfind("*/") {
+                comment = &selectors_raw[..c_end + 2];
+                selectors_raw = &selectors_raw[c_end + 2..];
+            }
+            let scoped: Vec<String> = selectors_raw
+                .split(',')
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .map(|s| format!("{prefix} {s}"))
+                .collect();
+            if comment.is_empty() {
+                format!("{} {{{body}}}", scoped.join(", "))
+            } else {
+                format!("{comment}\n{} {{{body}}}", scoped.join(", "))
+            }
         })
         .into_owned()
 }

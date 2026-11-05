@@ -168,6 +168,7 @@ fn parse_args_flags_and_validation() {
         theme: Theme::Auto,
         light_style: "Tomorrow".to_string(),
         dark_style: "Tomorrow Night".to_string(),
+        author: None,
         served: false,
     };
 
@@ -197,6 +198,7 @@ fn parse_args_flags_and_validation() {
                 theme: Theme::Dark,
                 light_style: "Railscasts".to_string(),
                 dark_style: "Railscasts".to_string(),
+                author: None,
                 served: false,
             },
             ..Config::default()

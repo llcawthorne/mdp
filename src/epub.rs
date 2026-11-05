@@ -6,7 +6,7 @@
 
 use crate::github::escape_html;
 use crate::render::{FRAGMENT_ENCODE_SET, HeadingEntry, render_document, slug};
-use crate::style::Theme;
+use crate::style::{Theme, highlight_css, resolve_theme_name};
 use crate::{Config, Options, preview};
 use anyhow::{Context, Result};
 use percent_encoding::utf8_percent_encode;
@@ -80,7 +80,7 @@ pub fn build_epub(input: &[u8], filename: &Path, opts: &Options) -> Result<Vec<u
         }
     };
 
-    let package_opf = render_package_opf(&doc.title, &book_id);
+    let package_opf = render_package_opf(&doc.title, &book_id, opts.author.as_deref());
     let nav_xhtml = render_nav_xhtml(&doc.title, &doc.headings);
     let content_xhtml = render_content_xhtml(
         &doc.title,
@@ -88,6 +88,18 @@ pub fn build_epub(input: &[u8], filename: &Path, opts: &Options) -> Result<Vec<u
         &doc.code_style,
         &html_to_xhtml(&doc.body),
     );
+
+    // E-readers (Apple Books, Calibre, e-ink devices) often do not execute JavaScript
+    // or support multi-attribute `:root[data-theme][data-code-style]` selector scoping.
+    // In addition to scoped CSS rules, prepend the direct syntax rules for the active style
+    // so every EPUB reader renders syntax highlighting out of the box.
+    let active_theme_name = if opts.theme == Theme::Dark {
+        resolve_theme_name(&opts.dark_style, true)
+    } else {
+        resolve_theme_name(&opts.light_style, false)
+    };
+    let direct_highlight_css = highlight_css(&active_theme_name).unwrap_or_default();
+    let epub_css = format!("{direct_highlight_css}\n{}", doc.css);
 
     let mut zip = ZipWriter::new(Cursor::new(Vec::new()));
 
@@ -108,7 +120,7 @@ pub fn build_epub(input: &[u8], filename: &Path, opts: &Options) -> Result<Vec<u
     for (path, data) in [
         ("META-INF/container.xml", CONTAINER_XML.as_bytes()),
         ("EPUB/package.opf", package_opf.as_bytes()),
-        ("EPUB/style.css", doc.css.as_bytes()),
+        ("EPUB/style.css", epub_css.as_bytes()),
         ("EPUB/nav.xhtml", nav_xhtml.as_bytes()),
         ("EPUB/content.xhtml", content_xhtml.as_bytes()),
     ] {
@@ -139,16 +151,19 @@ fn html_to_xhtml(html: &str) -> String {
 }
 
 /// Generates the `EPUB/package.opf` Open Packaging Format manifest and spine.
-fn render_package_opf(title: &str, book_id: &str) -> String {
+fn render_package_opf(title: &str, book_id: &str, author: Option<&str>) -> String {
     let escaped_title = escape_html(title);
     let escaped_id = escape_html(book_id);
+    let author_tag = author
+        .map(|a| format!("    <dc:creator>{}</dc:creator>\n", escape_html(a)))
+        .unwrap_or_default();
     format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="pub-id" xml:lang="en">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
     <dc:identifier id="pub-id">{escaped_id}</dc:identifier>
     <dc:title>{escaped_title}</dc:title>
-    <dc:language>en</dc:language>
+{author_tag}    <dc:language>en</dc:language>
     <meta property="dcterms:modified">2026-01-01T00:00:00Z</meta>
   </metadata>
   <manifest>
