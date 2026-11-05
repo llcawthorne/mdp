@@ -37,6 +37,26 @@ fn parse_content_highlights_code() {
             || toml_html.contains("sy-toml"),
         "TOML code block should be highlighted with sy-toml classes, got:\n{toml_html}"
     );
+
+    // Verify Kotlin syntax highlighting
+    let kt_input = b"```kotlin\nval x: Int = 1\nfun main() {}\n```\n";
+    let kt_res = parse_content(kt_input, Path::new(INPUT_FILE), &Options::default())
+        .expect("parse kotlin content");
+    let kt_html = String::from_utf8_lossy(&kt_res);
+    assert!(
+        kt_html.contains("sy-kotlin"),
+        "Kotlin code block should be highlighted with sy-kotlin classes, got:\n{kt_html}"
+    );
+
+    // Verify Elixir syntax highlighting
+    let ex_input = b"```elixir\ndefmodule Hello do\n  def world do\n    :ok\n  end\nend\n```\n";
+    let ex_res = parse_content(ex_input, Path::new(INPUT_FILE), &Options::default())
+        .expect("parse elixir content");
+    let ex_html = String::from_utf8_lossy(&ex_res);
+    assert!(
+        ex_html.contains("sy-elixir"),
+        "Elixir code block should be highlighted with sy-elixir classes, got:\n{ex_html}"
+    );
 }
 
 #[test]

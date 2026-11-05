@@ -33,6 +33,12 @@ const DARK_CSS: &str = include_str!("../assets/github-dark.css");
 /// Embedded TOML syntax definition (`assets/TOML.sublime-syntax`).
 const TOML_SYNTAX: &str = include_str!("../assets/TOML.sublime-syntax");
 
+/// Embedded Kotlin syntax definition (`assets/Kotlin.sublime-syntax`).
+const KOTLIN_SYNTAX: &str = include_str!("../assets/Kotlin.sublime-syntax");
+
+/// Embedded Elixir syntax definition (`assets/Elixir.sublime-syntax`).
+const ELIXIR_SYNTAX: &str = include_str!("../assets/Elixir.sublime-syntax");
+
 /// Embedded GitHub Dark `.tmTheme` (`assets/GitHub-Dark.tmTheme`).
 const GITHUB_DARK_THEME: &str = include_str!("../assets/GitHub-Dark.tmTheme");
 
@@ -66,11 +72,17 @@ const HEARTH_EMBER_LIGHT_THEME: &str = include_str!("../assets/hearth_ember_ligh
 /// Embedded One Dark Pro Night Flat `.tmTheme` (`assets/onedark_night_flat.tmTheme`).
 const ONEDARK_NIGHT_FLAT_THEME: &str = include_str!("../assets/onedark_night_flat.tmTheme");
 
-/// Lazily initialized `syntect` syntax definitions, including default syntaxes and TOML.
+/// Lazily initialized `syntect` syntax definitions, including default syntaxes, TOML, Kotlin, and Elixir.
 static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(|| {
     let mut builder = SyntaxSet::load_defaults_newlines().into_builder();
     if let Ok(toml_def) = SyntaxDefinition::load_from_str(TOML_SYNTAX, true, Some("toml")) {
         builder.add(toml_def);
+    }
+    if let Ok(kt_def) = SyntaxDefinition::load_from_str(KOTLIN_SYNTAX, true, Some("kotlin")) {
+        builder.add(kt_def);
+    }
+    if let Ok(ex_def) = SyntaxDefinition::load_from_str(ELIXIR_SYNTAX, true, Some("elixir")) {
+        builder.add(ex_def);
     }
     builder.build()
 });
