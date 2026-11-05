@@ -150,6 +150,7 @@ struct BuiltinStyle {
     aliases: &'static [&'static str],
     light: &'static str,
     dark: &'static str,
+    heading_color: Option<&'static str>,
 }
 
 /// The built-in syntax highlighting families.
@@ -160,6 +161,7 @@ const BUILTIN_STYLES: &[BuiltinStyle] = &[
         aliases: &["github", "github-light", "github-dark"],
         light: "InspiredGitHub",
         dark: "GitHub Dark",
+        heading_color: None,
     },
     BuiltinStyle {
         id: "solarized",
@@ -167,6 +169,7 @@ const BUILTIN_STYLES: &[BuiltinStyle] = &[
         aliases: &["solarized", "solarized-light", "solarized-dark"],
         light: "Solarized (light)",
         dark: "Solarized (dark)",
+        heading_color: None,
     },
     BuiltinStyle {
         id: "ocean",
@@ -174,6 +177,7 @@ const BUILTIN_STYLES: &[BuiltinStyle] = &[
         aliases: &["ocean", "ocean-light", "ocean-dark"],
         light: "base16-ocean.light",
         dark: "base16-ocean.dark",
+        heading_color: None,
     },
     BuiltinStyle {
         id: "darcula",
@@ -181,6 +185,7 @@ const BUILTIN_STYLES: &[BuiltinStyle] = &[
         aliases: &["darcula", "eighties"],
         light: "Darcula",
         dark: "Darcula",
+        heading_color: None,
     },
     BuiltinStyle {
         id: "railscasts",
@@ -188,6 +193,7 @@ const BUILTIN_STYLES: &[BuiltinStyle] = &[
         aliases: &["railscasts"],
         light: "Railscasts",
         dark: "Railscasts",
+        heading_color: None,
     },
     BuiltinStyle {
         id: "railscasts-neovim",
@@ -195,6 +201,7 @@ const BUILTIN_STYLES: &[BuiltinStyle] = &[
         aliases: &["railscasts-neovim", "railscasts-nvim"],
         light: "Railscasts Neovim",
         dark: "Railscasts Neovim",
+        heading_color: None,
     },
     BuiltinStyle {
         id: "railscasts-vscode",
@@ -202,6 +209,7 @@ const BUILTIN_STYLES: &[BuiltinStyle] = &[
         aliases: &["railscasts-vscode"],
         light: "Railscasts VSCode",
         dark: "Railscasts VSCode",
+        heading_color: None,
     },
     BuiltinStyle {
         id: "tokyo-night",
@@ -214,6 +222,7 @@ const BUILTIN_STYLES: &[BuiltinStyle] = &[
         ],
         light: "TokyoNight Day",
         dark: "TokyoNight Night",
+        heading_color: None,
     },
     BuiltinStyle {
         id: "abyss",
@@ -221,6 +230,7 @@ const BUILTIN_STYLES: &[BuiltinStyle] = &[
         aliases: &["abyss"],
         light: "Abyss",
         dark: "Abyss",
+        heading_color: None,
     },
     BuiltinStyle {
         id: "hearth-code",
@@ -233,6 +243,7 @@ const BUILTIN_STYLES: &[BuiltinStyle] = &[
         ],
         light: "Hearth Code Ember Light",
         dark: "Hearth Code Ember Dark",
+        heading_color: None,
     },
     BuiltinStyle {
         id: "one-dark-pro-night-flat",
@@ -244,6 +255,7 @@ const BUILTIN_STYLES: &[BuiltinStyle] = &[
         ],
         light: "One Dark Pro Night Flat",
         dark: "One Dark Pro Night Flat",
+        heading_color: Some("#ef596f"),
     },
     BuiltinStyle {
         id: "mocha",
@@ -251,6 +263,7 @@ const BUILTIN_STYLES: &[BuiltinStyle] = &[
         aliases: &["mocha"],
         light: "base16-mocha.dark",
         dark: "base16-mocha.dark",
+        heading_color: None,
     },
 ];
 
@@ -391,6 +404,15 @@ pub fn stylesheet(choices: &[CodeStyle]) -> Result<String> {
     let mut buf = String::with_capacity(PAGE_CSS.len() + DARK_CSS.len() + 8192);
     buf.push_str(PAGE_CSS);
     buf.push_str(DARK_CSS);
+
+    for s in BUILTIN_STYLES {
+        if let Some(color) = s.heading_color {
+            buf.push_str(&format!(
+                ":root[data-code-style=\"{}\"] {{ --heading-color: {}; }}\n",
+                s.id, color
+            ));
+        }
+    }
 
     for choice in choices {
         for th in [Theme::Light, Theme::Dark] {
