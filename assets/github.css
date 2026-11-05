@@ -16,7 +16,6 @@
   --alert-important: #8250df;
   --alert-warning: #9a6700;
   --alert-caution: #d1242f;
-  --heading-color: var(--fg);
 }
 
 /* on html rather than body, so a printed page's margins get it too */
@@ -301,7 +300,6 @@ body {
   margin-bottom: 16px;
   font-weight: 600;
   line-height: 1.25;
-  color: var(--heading-color);
 }
 
 .markdown-body h1,
