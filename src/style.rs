@@ -81,9 +81,6 @@ const AYU_DARK_THEME: &str = include_str!("../assets/ayu-dark.tmTheme");
 /// Embedded Ayu Light `.tmTheme` (`assets/ayu-light.tmTheme`).
 const AYU_LIGHT_THEME: &str = include_str!("../assets/ayu-light.tmTheme");
 
-/// Embedded One Dark Pro Night Flat `.tmTheme` (`assets/onedark_night_flat.tmTheme`).
-const ONEDARK_NIGHT_FLAT_THEME: &str = include_str!("../assets/onedark_night_flat.tmTheme");
-
 /// Lazily initialized `syntect` syntax definitions, including default syntaxes, TOML, Kotlin, Elixir, Swift, Elm, PureScript, and Dockerfile.
 static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(|| {
     let mut builder = SyntaxSet::load_defaults_newlines().into_builder();
@@ -125,7 +122,6 @@ static THEME_SET: LazyLock<ThemeSet> = LazyLock::new(|| {
         ("Tomorrow Night", TOMORROW_NIGHT_THEME),
         ("Ayu Dark", AYU_DARK_THEME),
         ("Ayu Light", AYU_LIGHT_THEME),
-        ("One Dark Pro Night Flat", ONEDARK_NIGHT_FLAT_THEME),
     ];
     for &(name, content) in themes {
         if let Ok(t) = ThemeSet::load_from_reader(&mut Cursor::new(content.as_bytes())) {
@@ -264,17 +260,6 @@ const BUILTIN_STYLES: &[BuiltinStyle] = &[
         dark: "Ayu Dark",
     },
     BuiltinStyle {
-        id: "one-dark-pro-night-flat",
-        label: "One Dark Pro Night Flat",
-        aliases: &[
-            "one-dark-pro-night-flat",
-            "onedark-night-flat",
-            "one-dark-pro",
-        ],
-        light: "One Dark Pro Night Flat",
-        dark: "One Dark Pro Night Flat",
-    },
-    BuiltinStyle {
         id: "mocha",
         label: "Mocha",
         aliases: &["mocha"],
@@ -301,7 +286,6 @@ pub fn available_styles() -> &'static [&'static str] {
         "tokyo-night",
         "tomorrow-night",
         "ayu",
-        "one-dark-pro-night-flat",
         "mocha",
     ]
 }
@@ -351,9 +335,6 @@ pub fn resolve_theme_name(name: &str, for_dark: bool) -> String {
         "tomorrow-night" | "mdbook" => return "Tomorrow Night".to_string(),
         "ayu-light" => return "Ayu Light".to_string(),
         "ayu" | "ayu-dark" => return "Ayu Dark".to_string(),
-        "one-dark-pro-night-flat" | "onedark-night-flat" | "one-dark-pro" => {
-            return "One Dark Pro Night Flat".to_string();
-        }
         _ => {}
     }
     for s in BUILTIN_STYLES {
