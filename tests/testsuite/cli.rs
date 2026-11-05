@@ -166,8 +166,8 @@ fn parse_args_flags_and_validation() {
     let default_opts = Options {
         toc: false,
         theme: Theme::Auto,
-        light_style: "InspiredGitHub".to_string(),
-        dark_style: "GitHub Dark".to_string(),
+        light_style: "Tomorrow".to_string(),
+        dark_style: "Tomorrow Night".to_string(),
         served: false,
     };
 
@@ -351,7 +351,7 @@ fn parse_content_toc() {
             "--toc opens it",
             "# Title\n\n## One\n",
             true,
-            &[r#" data-code-style="github" class="toc-open">"#, r#"aria-expanded="true""#],
+            &[r#" data-code-style="tomorrow-night" class="toc-open">"#, r#"aria-expanded="true""#],
             &[],
         ),
         (
@@ -516,7 +516,7 @@ fn run_makes_epub() {
     assert!(nav.contains(r#"href="content.xhtml#tasks""#));
 
     let content = read_entry(&mut archive, "EPUB/content.xhtml");
-    assert!(content.contains(r#"data-theme="light" data-code-style="github">"#));
+    assert!(content.contains(r#"data-theme="light" data-code-style="tomorrow-night">"#));
     assert!(content.contains("Book Title"));
     assert!(
         content.contains("<hr />"),

@@ -19,7 +19,7 @@ use syntect::parsing::{SyntaxSet, syntax_definition::SyntaxDefinition};
 use syntect::util::LinesWithEndings;
 
 /// Default code syntax highlighting style name.
-pub const DEFAULT_STYLE: &str = "github";
+pub const DEFAULT_STYLE: &str = "tomorrow-night";
 
 /// Prefix applied to `syntect` CSS classes on highlighted code tokens.
 const CLASS_STYLE: ClassStyle = ClassStyle::SpacedPrefixed { prefix: "sy-" };
@@ -75,6 +75,12 @@ const TOMORROW_THEME: &str = include_str!("../assets/tomorrow.tmTheme");
 /// Embedded Tomorrow Night `.tmTheme` (`assets/tomorrow-night.tmTheme`).
 const TOMORROW_NIGHT_THEME: &str = include_str!("../assets/tomorrow-night.tmTheme");
 
+/// Embedded Ayu Dark `.tmTheme` (`assets/ayu-dark.tmTheme`).
+const AYU_DARK_THEME: &str = include_str!("../assets/ayu-dark.tmTheme");
+
+/// Embedded Ayu Light `.tmTheme` (`assets/ayu-light.tmTheme`).
+const AYU_LIGHT_THEME: &str = include_str!("../assets/ayu-light.tmTheme");
+
 /// Embedded One Dark Pro Night Flat `.tmTheme` (`assets/onedark_night_flat.tmTheme`).
 const ONEDARK_NIGHT_FLAT_THEME: &str = include_str!("../assets/onedark_night_flat.tmTheme");
 
@@ -117,6 +123,8 @@ static THEME_SET: LazyLock<ThemeSet> = LazyLock::new(|| {
         ("TokyoNight Day", TOKYONIGHT_DAY_THEME),
         ("Tomorrow", TOMORROW_THEME),
         ("Tomorrow Night", TOMORROW_NIGHT_THEME),
+        ("Ayu Dark", AYU_DARK_THEME),
+        ("Ayu Light", AYU_LIGHT_THEME),
         ("One Dark Pro Night Flat", ONEDARK_NIGHT_FLAT_THEME),
     ];
     for &(name, content) in themes {
@@ -249,6 +257,13 @@ const BUILTIN_STYLES: &[BuiltinStyle] = &[
         dark: "Tomorrow Night",
     },
     BuiltinStyle {
+        id: "ayu",
+        label: "Ayu",
+        aliases: &["ayu", "ayu-dark", "ayu-light"],
+        light: "Ayu Light",
+        dark: "Ayu Dark",
+    },
+    BuiltinStyle {
         id: "one-dark-pro-night-flat",
         label: "One Dark Pro Night Flat",
         aliases: &[
@@ -285,6 +300,7 @@ pub fn available_styles() -> &'static [&'static str] {
         "railscasts-dark",
         "tokyo-night",
         "tomorrow-night",
+        "ayu",
         "one-dark-pro-night-flat",
         "mocha",
     ]
@@ -333,6 +349,8 @@ pub fn resolve_theme_name(name: &str, for_dark: bool) -> String {
         "tokyo-night-dark" => return "TokyoNight Night".to_string(),
         "tomorrow" => return "Tomorrow".to_string(),
         "tomorrow-night" | "mdbook" => return "Tomorrow Night".to_string(),
+        "ayu-light" => return "Ayu Light".to_string(),
+        "ayu" | "ayu-dark" => return "Ayu Dark".to_string(),
         "one-dark-pro-night-flat" | "onedark-night-flat" | "one-dark-pro" => {
             return "One Dark Pro Night Flat".to_string();
         }
