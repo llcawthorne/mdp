@@ -214,7 +214,10 @@ fn render_content_xhtml(
 ) -> String {
     let escaped_title = escape_html(title);
     let escaped_style = escape_html(code_style);
-    let theme_str = theme.as_str();
+    let theme_str = match theme {
+        Theme::Dark => "dark",
+        Theme::Light | Theme::Auto => "light",
+    };
     let body_class = if theme == Theme::Dark {
         r#" class="dark""#
     } else {
@@ -224,14 +227,14 @@ fn render_content_xhtml(
     format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="en" data-theme="{theme_str}">
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="en" data-theme="{theme_str}" data-code-style="{escaped_style}">
 <head>
   <meta charset="utf-8" />
   <title>{escaped_title}</title>
   <link rel="stylesheet" type="text/css" href="style.css" />
 </head>
 <body{body_class}>
-  <article class="markdown-body" data-code-style="{escaped_style}">
+  <article class="markdown-body">
 {xhtml_body}  </article>
 </body>
 </html>

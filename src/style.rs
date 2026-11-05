@@ -60,11 +60,8 @@ const DARCULA_THEME: &str = include_str!("../assets/Darcula.tmTheme");
 /// Embedded Railscasts `.tmTheme` (`assets/Railscasts.tmTheme`).
 const RAILSCASTS_THEME: &str = include_str!("../assets/Railscasts.tmTheme");
 
-/// Embedded Railscasts Neovim `.tmTheme` (`assets/railscasts-neovim.tmTheme`).
-const RAILSCASTS_NEOVIM_THEME: &str = include_str!("../assets/railscasts-neovim.tmTheme");
-
-/// Embedded Railscasts VSCode `.tmTheme` (`assets/railscasts-vscode.tmTheme`).
-const RAILSCASTS_VSCODE_THEME: &str = include_str!("../assets/railscasts-vscode.tmTheme");
+/// Embedded Railscasts Dark `.tmTheme` (`assets/railscasts-dark.tmTheme`).
+const RAILSCASTS_DARK_THEME: &str = include_str!("../assets/railscasts-dark.tmTheme");
 
 /// Embedded TokyoNight Night `.tmTheme` (`assets/tokyonight_night.tmTheme`).
 const TOKYONIGHT_NIGHT_THEME: &str = include_str!("../assets/tokyonight_night.tmTheme");
@@ -109,8 +106,7 @@ static THEME_SET: LazyLock<ThemeSet> = LazyLock::new(|| {
         ("GitHub Dark", GITHUB_DARK_THEME),
         ("Darcula", DARCULA_THEME),
         ("Railscasts", RAILSCASTS_THEME),
-        ("Railscasts Neovim", RAILSCASTS_NEOVIM_THEME),
-        ("Railscasts VSCode", RAILSCASTS_VSCODE_THEME),
+        ("Railscasts Dark", RAILSCASTS_DARK_THEME),
         ("TokyoNight Night", TOKYONIGHT_NIGHT_THEME),
         ("TokyoNight Day", TOKYONIGHT_DAY_THEME),
         ("One Dark Pro Night Flat", ONEDARK_NIGHT_FLAT_THEME),
@@ -209,23 +205,16 @@ const BUILTIN_STYLES: &[BuiltinStyle] = &[
     BuiltinStyle {
         id: "railscasts",
         label: "Railscasts",
-        aliases: &["railscasts"],
+        aliases: &["railscasts", "railscasts-vscode"],
         light: "Railscasts",
         dark: "Railscasts",
     },
     BuiltinStyle {
-        id: "railscasts-neovim",
-        label: "Railscasts (Neovim)",
-        aliases: &["railscasts-neovim", "railscasts-nvim"],
-        light: "Railscasts Neovim",
-        dark: "Railscasts Neovim",
-    },
-    BuiltinStyle {
-        id: "railscasts-vscode",
-        label: "Railscasts (VS Code)",
-        aliases: &["railscasts-vscode"],
-        light: "Railscasts VSCode",
-        dark: "Railscasts VSCode",
+        id: "railscasts-dark",
+        label: "Railscasts Dark",
+        aliases: &["railscasts-dark", "railscasts-neovim", "railscasts-nvim"],
+        light: "Railscasts Dark",
+        dark: "Railscasts Dark",
     },
     BuiltinStyle {
         id: "tokyo-night",
@@ -273,8 +262,7 @@ pub fn available_styles() -> &'static [&'static str] {
         "ocean-dark",
         "darcula",
         "railscasts",
-        "railscasts-neovim",
-        "railscasts-vscode",
+        "railscasts-dark",
         "tokyo-night",
         "one-dark-pro-night-flat",
         "mocha",
@@ -316,9 +304,10 @@ pub fn resolve_theme_name(name: &str, for_dark: bool) -> String {
         "ocean-light" => return "base16-ocean.light".to_string(),
         "ocean-dark" => return "base16-ocean.dark".to_string(),
         "darcula" => return "Darcula".to_string(),
-        "railscasts" => return "Railscasts".to_string(),
-        "railscasts-neovim" | "railscasts-nvim" => return "Railscasts Neovim".to_string(),
-        "railscasts-vscode" => return "Railscasts VSCode".to_string(),
+        "railscasts" | "railscasts-vscode" => return "Railscasts".to_string(),
+        "railscasts-dark" | "railscasts-neovim" | "railscasts-nvim" => {
+            return "Railscasts Dark".to_string();
+        }
         "tokyo-night-day" => return "TokyoNight Day".to_string(),
         "tokyo-night-dark" => return "TokyoNight Night".to_string(),
         "one-dark-pro-night-flat" | "onedark-night-flat" | "one-dark-pro" => {

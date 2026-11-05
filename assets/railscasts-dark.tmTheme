@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>name</key>
-	<string>Railscasts Neovim</string>
+	<string>Railscasts Dark</string>
 	<key>settings</key>
 	<array>
 		<dict>

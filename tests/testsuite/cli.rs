@@ -516,6 +516,7 @@ fn run_makes_epub() {
     assert!(nav.contains(r#"href="content.xhtml#tasks""#));
 
     let content = read_entry(&mut archive, "EPUB/content.xhtml");
+    assert!(content.contains(r#"data-theme="light" data-code-style="github">"#));
     assert!(content.contains("Book Title"));
     assert!(
         content.contains("<hr />"),
