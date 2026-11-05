@@ -27,7 +27,7 @@ use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
 use pulldown_cmark::{Alignment, CodeBlockKind, CowStr, Event, HeadingLevel, Options as CmarkOptions, Parser, Tag, TagEnd};
 use regex::Regex;
 use serde::Serialize;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::path::Path;
 use std::sync::LazyLock;
@@ -102,9 +102,9 @@ static SANITIZER: LazyLock<AmmoniaBuilder<'static>> = LazyLock::new(|| {
     builder.add_tags([
         "kbd", "details", "summary", "picture", "source", "input",
     ]);
-    builder.add_tag_attributes("pre", ["class"]);
-    builder.add_tag_attributes("code", ["class"]);
-    builder.add_tag_attributes("span", ["class"]);
+    builder.add_tag_attributes("pre", ["class", "style"]);
+    builder.add_tag_attributes("code", ["class", "style"]);
+    builder.add_tag_attributes("span", ["class", "style"]);
     builder.add_tag_attributes("input", ["type", "checked", "disabled"]);
     for h in ["h1", "h2", "h3", "h4", "h5", "h6"] {
         builder.add_tag_attributes(h, ["id", "align"]);
@@ -252,9 +252,270 @@ fn level_to_u8(level: HeadingLevel) -> u8 {
 //   directly from `body_md`. We transform that stream in a single pass by
 //   mapping or replacing events into `out_events: Vec<Event<'_>>`, and then feed
 //   `out_events.into_iter()` into `pulldown_cmark::html::push_html`.
-/// Runs [`pulldown_cmark`] over `body_md`, transforming GFM extensions, code
-/// blocks, headings, math, Mermaid diagrams, and footnotes into an HTML string.
-fn render_markdown_body(body_md: &str, front_matter_html: &str) -> RenderedBody {
+/// Finishes rendering a fenced or indented code block, detecting math and Mermaid.
+fn finish_code_block(
+    lang: &str,
+    code_buf: &str,
+    uses_math: &mut bool,
+    uses_mermaid: &mut bool,
+) -> String {
+    let lang_trimmed = lang.trim();
+    if lang_trimmed.eq_ignore_ascii_case("math") {
+        *uses_math = true;
+        format!(
+            "<div class=\"math math-display\">{}</div>\n",
+            escape_html(code_buf)
+        )
+    } else if lang_trimmed.eq_ignore_ascii_case("mermaid") {
+        *uses_mermaid = true;
+        format!("<pre class=\"mermaid\">{}</pre>\n", escape_html(code_buf))
+    } else {
+        highlight_code(code_buf, lang_trimmed)
+    }
+}
+
+/// Finishes buffering a heading, assigning a GitHub-compatible unique slug ID.
+fn finish_heading(
+    level: HeadingLevel,
+    mut h_events: Vec<Event<'_>>,
+    full_text: &str,
+    toc_text: &str,
+    seen_ids: &mut HashMap<String, usize>,
+    headings: &mut Vec<HeadingEntry>,
+) -> String {
+    let lvl = level_to_u8(level);
+    let base = slug(full_text.trim());
+    let mut id = base.clone();
+    while seen_ids.get(&id).copied().unwrap_or(0) > 0 {
+        let counter = seen_ids.entry(base.clone()).or_insert(0);
+        let n = *counter;
+        *counter += 1;
+        id = format!("{base}-{n}");
+    }
+    *seen_ids.entry(id.clone()).or_insert(0) += 1;
+
+    let mut inner_html = String::new();
+    pulldown_cmark::html::push_html(&mut inner_html, h_events.drain(..));
+    let heading_html = format!("<h{lvl} id=\"{id}\">{inner_html}</h{lvl}>\n");
+
+    headings.push(HeadingEntry {
+        level: lvl,
+        id,
+        toc_title: toc_text.trim().to_string(),
+        full_text: full_text.trim().to_string(),
+    });
+    heading_html
+}
+
+/// Tracks HTML table elements and column alignments across pulldown-cmark table tags.
+#[derive(Default)]
+struct TableTracker {
+    alignments: Option<Vec<Alignment>>,
+    in_head: bool,
+    col_idx: usize,
+}
+
+impl TableTracker {
+    fn handle_event<'a>(&mut self, event: &Event<'a>) -> Option<Event<'a>> {
+        match event {
+            Event::Start(Tag::Table(aligns)) => {
+                self.alignments = Some(aligns.clone());
+                Some(Event::Html(CowStr::from("<table>\n")))
+            }
+            Event::End(TagEnd::Table) => {
+                self.alignments = None;
+                Some(Event::Html(CowStr::from("</tbody>\n</table>\n")))
+            }
+            Event::Start(Tag::TableHead) => {
+                self.in_head = true;
+                self.col_idx = 0;
+                Some(Event::Html(CowStr::from("<thead>\n<tr>\n")))
+            }
+            Event::End(TagEnd::TableHead) => {
+                self.in_head = false;
+                Some(Event::Html(CowStr::from("</tr>\n</thead>\n<tbody>\n")))
+            }
+            Event::Start(Tag::TableRow) => {
+                self.col_idx = 0;
+                Some(Event::Html(CowStr::from("<tr>\n")))
+            }
+            Event::End(TagEnd::TableRow) => Some(Event::Html(CowStr::from("</tr>\n"))),
+            Event::Start(Tag::TableCell) => {
+                let tag = if self.in_head { "th" } else { "td" };
+                let align_attr = self
+                    .alignments
+                    .as_ref()
+                    .and_then(|a| a.get(self.col_idx))
+                    .map(|a| match a {
+                        Alignment::None => "",
+                        Alignment::Left => r#" align="left""#,
+                        Alignment::Center => r#" align="center""#,
+                        Alignment::Right => r#" align="right""#,
+                    })
+                    .unwrap_or("");
+                self.col_idx += 1;
+                Some(Event::Html(CowStr::from(format!("<{tag}{align_attr}>"))))
+            }
+            Event::End(TagEnd::TableCell) => {
+                let tag = if self.in_head { "th" } else { "td" };
+                Some(Event::Html(CowStr::from(format!("</{tag}>\n"))))
+            }
+            _ => None,
+        }
+    }
+}
+
+/// Renders collected footnotes at the bottom of the article in reference order.
+fn render_footnotes(
+    footnote_order: &[String],
+    footnote_numbers: &HashMap<String, usize>,
+    mut footnote_defs: HashMap<String, Vec<Event<'_>>>,
+) -> String {
+    if footnote_order.is_empty() {
+        return String::new();
+    }
+    let mut html = String::from("<div class=\"footnotes\" role=\"doc-endnotes\">\n<hr>\n<ol>\n");
+    for name in footnote_order {
+        let num = footnote_numbers[name];
+        let mut def_html = String::new();
+        if let Some(events) = footnote_defs.remove(name) {
+            pulldown_cmark::html::push_html(&mut def_html, events.into_iter());
+        }
+        let backref = format!(
+            "\u{00a0}<a href=\"#fnref:{num}\" class=\"footnote-backref\" role=\"doc-backlink\">\u{21a9}\u{fe0e}</a>"
+        );
+        let trimmed = def_html.trim_end();
+        if let Some(before_p) = trimmed.strip_suffix("</p>") {
+            let _ = write!(html, "<li id=\"fn:{num}\">\n{before_p}{backref}</p>\n</li>\n");
+        } else {
+            let _ = write!(html, "<li id=\"fn:{num}\">\n{def_html}{backref}\n</li>\n");
+        }
+    }
+    html.push_str("</ol>\n</div>\n");
+    html
+}
+
+/// Handles events inside a heading buffer before the heading finishes.
+fn handle_heading_inner_event<'a>(
+    h_events: &mut Vec<Event<'a>>,
+    full_text: &mut String,
+    toc_text: &mut String,
+    uses_math: &mut bool,
+    event: Event<'a>,
+) {
+    match event {
+        Event::Text(t) => {
+            let replaced = replace_emojis(&t).into_owned();
+            full_text.push_str(&replaced);
+            toc_text.push_str(&replaced);
+            h_events.push(Event::Text(CowStr::from(replaced)));
+        }
+        Event::Code(c) => {
+            full_text.push_str(&c);
+            toc_text.push_str(&c);
+            h_events.push(Event::Code(c));
+        }
+        Event::InlineMath(m) => {
+            *uses_math = true;
+            let trimmed = m.trim();
+            full_text.push_str(trimmed);
+            let span = format!(
+                r#"<span class="math math-inline">{}</span>"#,
+                escape_html(trimmed)
+            );
+            h_events.push(Event::Html(CowStr::from(span)));
+        }
+        Event::DisplayMath(m) => {
+            *uses_math = true;
+            let trimmed = m.trim();
+            full_text.push_str(trimmed);
+            let span = format!(
+                r#"<span class="math math-display">{}</span>"#,
+                escape_html(trimmed)
+            );
+            h_events.push(Event::Html(CowStr::from(span)));
+        }
+        other => h_events.push(other),
+    }
+}
+
+/// Formats inline math according to GitHub Markdown rules.
+fn format_inline_math<'a>(
+    m: CowStr<'a>,
+    range_end: usize,
+    body_md: &str,
+    uses_math: &mut bool,
+) -> Event<'a> {
+    let followed_by_digit =
+        range_end < body_md.len() && body_md.as_bytes()[range_end].is_ascii_digit();
+    if followed_by_digit
+        || m.is_empty()
+        || m.starts_with(' ')
+        || m.ends_with(' ')
+        || m.contains('\n')
+    {
+        Event::Text(CowStr::from(format!("${m}$")))
+    } else {
+        *uses_math = true;
+        let trimmed = m.trim();
+        let inner = if trimmed.starts_with('`')
+            && trimmed.ends_with('`')
+            && trimmed.len() >= 2
+        {
+            trimmed[1..trimmed.len() - 1].trim()
+        } else {
+            trimmed
+        };
+        let span = format!(
+            r#"<span class="math math-inline">{}</span>"#,
+            escape_html(inner)
+        );
+        Event::Html(CowStr::from(span))
+    }
+}
+
+/// Formats display math as HTML.
+fn format_display_math<'a>(m: CowStr<'a>, uses_math: &mut bool) -> Event<'a> {
+    let trimmed = m.trim();
+    if trimmed.is_empty() {
+        Event::Text(CowStr::from("$$"))
+    } else {
+        *uses_math = true;
+        let span = format!(
+            r#"<span class="math math-display">{}</span>"#,
+            escape_html(trimmed)
+        );
+        Event::Html(CowStr::from(span))
+    }
+}
+
+/// Formats a footnote reference link and assigns a 1-based index.
+fn format_footnote_ref(
+    name: &str,
+    footnote_numbers: &mut HashMap<String, usize>,
+    footnote_order: &mut Vec<String>,
+) -> String {
+    let key = name.to_string();
+    let num = if let Some(&n) = footnote_numbers.get(&key) {
+        n
+    } else {
+        let n = footnote_numbers.len() + 1;
+        footnote_numbers.insert(key.clone(), n);
+        footnote_order.push(key);
+        n
+    };
+    // Raw string literal note (`r##"..."##`):
+    //   Because the HTML contains `href="#fn:..."`, which has `"#`
+    //   inside the string, a single-hash raw string `r#"..."#` would
+    //   think `"#` closes the string! Using two hashes (`r##"..."##`)
+    //   allows `"#` to appear freely inside the literal.
+    format!(
+        r##"<sup id="fnref:{num}"><a href="#fn:{num}" class="footnote-ref" role="doc-noteref">{num}</a></sup>"##
+    )
+}
+
+/// Parses raw Markdown with GFM and math options, then coalesces backtick math.
+fn parse_markdown_events(body_md: &str) -> Vec<(Event<'_>, std::ops::Range<usize>)> {
     let mut cmark_opts = CmarkOptions::empty();
     cmark_opts.insert(CmarkOptions::ENABLE_TABLES);
     cmark_opts.insert(CmarkOptions::ENABLE_FOOTNOTES);
@@ -272,7 +533,76 @@ fn render_markdown_body(body_md: &str, front_matter_html: &str) -> RenderedBody 
         Parser::new_ext(body_md, cmark_opts)
             .into_offset_iter()
             .collect();
-    let events = coalesce_backtick_math(body_md, raw_events);
+    coalesce_backtick_math(body_md, raw_events)
+}
+
+/// Handles Markdown text events by replacing emoji shortcodes and auto-linking URLs.
+fn handle_text_event<'a>(
+    t: &str,
+    in_link_depth: usize,
+    out_events: &mut Vec<Event<'a>>,
+    in_footnote_def: &mut Option<(String, Vec<Event<'a>>)>,
+) {
+    let replaced = replace_emojis(t).into_owned();
+    if in_link_depth == 0
+        && let Some(linked_html) = autolink_gfm(&replaced)
+    {
+        push_event(
+            out_events,
+            in_footnote_def,
+            Event::Html(CowStr::from(linked_html)),
+        );
+    } else {
+        push_event(
+            out_events,
+            in_footnote_def,
+            Event::Text(CowStr::from(replaced)),
+        );
+    }
+}
+
+/// Assembles the final HTML string from front matter, HTML events, and footnotes.
+fn assemble_html(
+    front_matter_html: &str,
+    body_md_len: usize,
+    out_events: Vec<Event<'_>>,
+    footnote_order: &[String],
+    footnote_numbers: &HashMap<String, usize>,
+    footnote_defs: HashMap<String, Vec<Event<'_>>>,
+) -> String {
+    let mut html_out = String::with_capacity(body_md_len + front_matter_html.len() + 256);
+    html_out.push_str(front_matter_html);
+    pulldown_cmark::html::push_html(&mut html_out, out_events.into_iter());
+
+    let cleaned = html_out.replace("<tbody>\n</tbody>\n", "");
+    let mut final_html = cleaned;
+    final_html.push_str(&render_footnotes(
+        footnote_order,
+        footnote_numbers,
+        footnote_defs,
+    ));
+    final_html
+}
+
+/// Handles link depth tracking for autolinking.
+fn handle_link_event<'a>(
+    event: Event<'a>,
+    in_link_depth: &mut usize,
+    out_events: &mut Vec<Event<'a>>,
+    in_footnote_def: &mut Option<(String, Vec<Event<'a>>)>,
+) {
+    match event {
+        Event::Start(Tag::Link { .. }) => *in_link_depth += 1,
+        Event::End(TagEnd::Link) => *in_link_depth = in_link_depth.saturating_sub(1),
+        _ => {}
+    }
+    push_event(out_events, in_footnote_def, event);
+}
+
+/// Runs [`pulldown_cmark`] over `body_md`, transforming GFM extensions, code
+/// blocks, headings, math, Mermaid diagrams, and footnotes into an HTML string.
+fn render_markdown_body(body_md: &str, front_matter_html: &str) -> RenderedBody {
+    let events = parse_markdown_events(body_md);
 
     let mut out_events: Vec<Event<'_>> = Vec::new();
     let mut headings: Vec<HeadingEntry> = Vec::new();
@@ -280,18 +610,10 @@ fn render_markdown_body(body_md: &str, front_matter_html: &str) -> RenderedBody 
     let mut uses_math = false;
     let mut uses_mermaid = false;
 
-    // Heading capture state
     let mut in_heading: Option<(HeadingLevel, Vec<Event<'_>>, String, String)> = None;
-
-    // Code block capture state: Some((info_string, accumulated_code))
     let mut in_code_block: Option<(String, String)> = None;
+    let mut table_tracker = TableTracker::default();
 
-    // Table alignment state: tracks column alignments and whether we're in <thead>
-    let mut table_alignments: Option<Vec<Alignment>> = None;
-    let mut in_table_head = false;
-    let mut table_col_idx: usize = 0;
-
-    // Footnote state: maps footnote label -> 1-based number, and stores definition events
     let mut footnote_numbers: HashMap<String, usize> = HashMap::new();
     let mut footnote_order: Vec<String> = Vec::new();
     let mut in_footnote_def: Option<(String, Vec<Event<'_>>)> = None;
@@ -299,31 +621,12 @@ fn render_markdown_body(body_md: &str, front_matter_html: &str) -> RenderedBody 
     let mut in_link_depth: usize = 0;
 
     for (event, range) in events {
-        // Pattern matching with `ref` and `ref mut` (`if let Some((ref lang, ref mut code_buf)) = in_code_block`):
-        //   Without `ref` / `ref mut`, matching `Some((lang, code_buf))` would
-        //   *move* the `String`s out of `in_code_block`, consuming it on the
-        //   first event inside the code block! `ref lang` borrows the language
-        //   string immutably (`&String`), and `ref mut code_buf` borrows the
-        //   buffer mutably (`&mut String`) so we can `code_buf.push_str(&t)` across
-        //   multiple `Event::Text` chunks until `Event::End(TagEnd::CodeBlock)`.
         if let Some((ref lang, ref mut code_buf)) = in_code_block {
             match event {
                 Event::End(TagEnd::CodeBlock) => {
-                    let lang_trimmed = lang.trim();
-                    let rendered_block = if lang_trimmed.eq_ignore_ascii_case("math") {
-                        uses_math = true;
-                        format!(
-                            "<div class=\"math math-display\">{}</div>\n",
-                            escape_html(code_buf)
-                        )
-                    } else if lang_trimmed.eq_ignore_ascii_case("mermaid") {
-                        uses_mermaid = true;
-                        format!("<pre class=\"mermaid\">{}</pre>\n", escape_html(code_buf))
-                    } else {
-                        highlight_code(code_buf, lang_trimmed)
-                    };
+                    let block = finish_code_block(lang, code_buf, &mut uses_math, &mut uses_mermaid);
                     in_code_block = None;
-                    push_event(&mut out_events, &mut in_footnote_def, Event::Html(CowStr::from(rendered_block)));
+                    push_event(&mut out_events, &mut in_footnote_def, Event::Html(CowStr::from(block)));
                 }
                 Event::Text(t) => code_buf.push_str(&t),
                 _ => {}
@@ -331,69 +634,20 @@ fn render_markdown_body(body_md: &str, front_matter_html: &str) -> RenderedBody 
             continue;
         }
 
-        // If inside a heading, buffer inner events so we can compute the GitHub slug ID first
         if let Some((level, ref mut h_events, ref mut full_text, ref mut toc_text)) = in_heading {
-            match event {
-                Event::End(TagEnd::Heading(_)) => {
-                    let lvl = level_to_u8(level);
-                    let base = slug(full_text.trim());
-                    let mut id = base.clone();
-                    while seen_ids.get(&id).copied().unwrap_or(0) > 0 {
-                        let n = *seen_ids.entry(base.clone()).or_insert(0);
-                        id = format!("{base}-{n}");
-                        *seen_ids.get_mut(&base).unwrap() += 1;
-                    }
-                    *seen_ids.entry(id.clone()).or_insert(0) += 1;
-
-                    let mut inner_html = String::new();
-                    // `h_events.drain(..)` moves all buffered events out of the
-                    // `Vec` into `push_html` without deallocating the vector's
-                    // backing buffer before `in_heading = None` drops it.
-                    pulldown_cmark::html::push_html(&mut inner_html, h_events.drain(..));
-                    let heading_html = format!("<h{lvl} id=\"{id}\">{inner_html}</h{lvl}>\n");
-
-                    headings.push(HeadingEntry {
-                        level: lvl,
-                        id,
-                        toc_title: toc_text.trim().to_string(),
-                        full_text: full_text.trim().to_string(),
-                    });
-                    in_heading = None;
-                    push_event(&mut out_events, &mut in_footnote_def, Event::Html(CowStr::from(heading_html)));
-                }
-                Event::Text(t) => {
-                    let replaced = replace_emojis(&t).into_owned();
-                    full_text.push_str(&replaced);
-                    toc_text.push_str(&replaced);
-                    h_events.push(Event::Text(CowStr::from(replaced)));
-                }
-                Event::Code(c) => {
-                    full_text.push_str(&c);
-                    toc_text.push_str(&c);
-                    h_events.push(Event::Code(c));
-                }
-                Event::InlineMath(m) => {
-                    uses_math = true;
-                    let trimmed = m.trim();
-                    full_text.push_str(trimmed);
-                    let span = format!(
-                        r#"<span class="math math-inline">{}</span>"#,
-                        escape_html(trimmed)
-                    );
-                    h_events.push(Event::Html(CowStr::from(span)));
-                }
-                Event::DisplayMath(m) => {
-                    uses_math = true;
-                    let trimmed = m.trim();
-                    full_text.push_str(trimmed);
-                    let span = format!(
-                        r#"<span class="math math-display">{}</span>"#,
-                        escape_html(trimmed)
-                    );
-                    h_events.push(Event::Html(CowStr::from(span)));
-                }
-                other => h_events.push(other),
+            if let Event::End(TagEnd::Heading(_)) = event {
+                let events = std::mem::take(h_events);
+                let html = finish_heading(level, events, full_text, toc_text, &mut seen_ids, &mut headings);
+                in_heading = None;
+                push_event(&mut out_events, &mut in_footnote_def, Event::Html(CowStr::from(html)));
+            } else {
+                handle_heading_inner_event(h_events, full_text, toc_text, &mut uses_math, event);
             }
+            continue;
+        }
+
+        if let Some(table_event) = table_tracker.handle_event(&event) {
+            push_event(&mut out_events, &mut in_footnote_def, table_event);
             continue;
         }
 
@@ -409,54 +663,12 @@ fn render_markdown_body(body_md: &str, front_matter_html: &str) -> RenderedBody 
                 in_code_block = Some((lang, String::new()));
             }
             Event::InlineMath(m) => {
-                let followed_by_digit =
-                    range.end < body_md.len() && body_md.as_bytes()[range.end].is_ascii_digit();
-                if followed_by_digit
-                    || m.is_empty()
-                    || m.starts_with(' ')
-                    || m.ends_with(' ')
-                    || m.contains('\n')
-                {
-                    // Preserve strict GitHub single-$ rules when spaces, newlines, or trailing digits appear
-                    push_event(
-                        &mut out_events,
-                        &mut in_footnote_def,
-                        Event::Text(CowStr::from(format!("${m}$"))),
-                    );
-                } else {
-                    uses_math = true;
-                    let trimmed = m.trim();
-                    let inner = if trimmed.starts_with('`')
-                        && trimmed.ends_with('`')
-                        && trimmed.len() >= 2
-                    {
-                        trimmed[1..trimmed.len() - 1].trim()
-                    } else {
-                        trimmed
-                    };
-                    let span = format!(
-                        r#"<span class="math math-inline">{}</span>"#,
-                        escape_html(inner)
-                    );
-                    push_event(&mut out_events, &mut in_footnote_def, Event::Html(CowStr::from(span)));
-                }
+                let ev = format_inline_math(m, range.end, body_md, &mut uses_math);
+                push_event(&mut out_events, &mut in_footnote_def, ev);
             }
             Event::DisplayMath(m) => {
-                let trimmed = m.trim();
-                if trimmed.is_empty() {
-                    push_event(
-                        &mut out_events,
-                        &mut in_footnote_def,
-                        Event::Text(CowStr::from("$$")),
-                    );
-                } else {
-                    uses_math = true;
-                    let span = format!(
-                        r#"<span class="math math-display">{}</span>"#,
-                        escape_html(trimmed)
-                    );
-                    push_event(&mut out_events, &mut in_footnote_def, Event::Html(CowStr::from(span)));
-                }
+                let ev = format_display_math(m, &mut uses_math);
+                push_event(&mut out_events, &mut in_footnote_def, ev);
             }
             Event::Start(Tag::BlockQuote(Some(kind))) => {
                 let (cls, title) = alert_meta(kind);
@@ -472,170 +684,36 @@ fn render_markdown_body(body_md: &str, front_matter_html: &str) -> RenderedBody 
                     Event::Html(CowStr::from("</blockquote>\n")),
                 );
             }
-            Event::Start(Tag::Table(aligns)) => {
-                table_alignments = Some(aligns);
-                push_event(
-                    &mut out_events,
-                    &mut in_footnote_def,
-                    Event::Html(CowStr::from("<table>\n")),
-                );
-            }
-            Event::End(TagEnd::Table) => {
-                table_alignments = None;
-                push_event(
-                    &mut out_events,
-                    &mut in_footnote_def,
-                    Event::Html(CowStr::from("</tbody>\n</table>\n")),
-                );
-            }
-            Event::Start(Tag::TableHead) => {
-                in_table_head = true;
-                table_col_idx = 0;
-                push_event(
-                    &mut out_events,
-                    &mut in_footnote_def,
-                    Event::Html(CowStr::from("<thead>\n<tr>\n")),
-                );
-            }
-            Event::End(TagEnd::TableHead) => {
-                in_table_head = false;
-                push_event(
-                    &mut out_events,
-                    &mut in_footnote_def,
-                    Event::Html(CowStr::from("</tr>\n</thead>\n<tbody>\n")),
-                );
-            }
-            Event::Start(Tag::TableRow) => {
-                table_col_idx = 0;
-                push_event(
-                    &mut out_events,
-                    &mut in_footnote_def,
-                    Event::Html(CowStr::from("<tr>\n")),
-                );
-            }
-            Event::End(TagEnd::TableRow) => {
-                push_event(
-                    &mut out_events,
-                    &mut in_footnote_def,
-                    Event::Html(CowStr::from("</tr>\n")),
-                );
-            }
-            Event::Start(Tag::TableCell) => {
-                let tag = if in_table_head { "th" } else { "td" };
-                let align_attr = table_alignments
-                    .as_ref()
-                    .and_then(|a| a.get(table_col_idx))
-                    .map(|a| match a {
-                        Alignment::None => "",
-                        Alignment::Left => r#" align="left""#,
-                        Alignment::Center => r#" align="center""#,
-                        Alignment::Right => r#" align="right""#,
-                    })
-                    .unwrap_or("");
-                table_col_idx += 1;
-                push_event(
-                    &mut out_events,
-                    &mut in_footnote_def,
-                    Event::Html(CowStr::from(format!("<{tag}{align_attr}>"))),
-                );
-            }
-            Event::End(TagEnd::TableCell) => {
-                let tag = if in_table_head { "th" } else { "td" };
-                push_event(
-                    &mut out_events,
-                    &mut in_footnote_def,
-                    Event::Html(CowStr::from(format!("</{tag}>\n"))),
-                );
-            }
             Event::FootnoteReference(name) => {
-                let key = name.to_string();
-                let num = if let Some(&n) = footnote_numbers.get(&key) {
-                    n
-                } else {
-                    let n = footnote_numbers.len() + 1;
-                    footnote_numbers.insert(key.clone(), n);
-                    footnote_order.push(key);
-                    n
-                };
-                // Raw string literal note (`r##"..."##`):
-                //   Because the HTML contains `href="#fn:..."`, which has `"#`
-                //   inside the string, a single-hash raw string `r#"..."#` would
-                //   think `"#` closes the string! Using two hashes (`r##"..."##`)
-                //   allows `"#` to appear freely inside the literal.
-                let html = format!(
-                    r##"<sup id="fnref:{num}"><a href="#fn:{num}" class="footnote-ref" role="doc-noteref">{num}</a></sup>"##
-                );
+                let html = format_footnote_ref(&name, &mut footnote_numbers, &mut footnote_order);
                 push_event(&mut out_events, &mut in_footnote_def, Event::Html(CowStr::from(html)));
             }
             Event::Start(Tag::FootnoteDefinition(name)) => {
                 in_footnote_def = Some((name.to_string(), Vec::new()));
             }
             Event::End(TagEnd::FootnoteDefinition) => {
-                // `Option::take(&mut self)` swaps `Some(value)` out of `in_footnote_def`
-                // and leaves `None` in its place in one step—a classic Rust idiom
-                // for moving an owned value out of a mutable `Option` without cloning.
                 if let Some((name, def_events)) = in_footnote_def.take() {
                     footnote_defs.insert(name, def_events);
                 }
             }
-            Event::Start(Tag::Link { .. }) => {
-                in_link_depth += 1;
-                push_event(&mut out_events, &mut in_footnote_def, event);
-            }
-            Event::End(TagEnd::Link) => {
-                in_link_depth = in_link_depth.saturating_sub(1);
-                push_event(&mut out_events, &mut in_footnote_def, event);
+            Event::Start(Tag::Link { .. }) | Event::End(TagEnd::Link) => {
+                handle_link_event(event, &mut in_link_depth, &mut out_events, &mut in_footnote_def);
             }
             Event::Text(t) => {
-                let replaced = replace_emojis(&t).into_owned();
-                if in_link_depth == 0
-                    && let Some(linked_html) = autolink_gfm(&replaced)
-                {
-                    push_event(
-                        &mut out_events,
-                        &mut in_footnote_def,
-                        Event::Html(CowStr::from(linked_html)),
-                    );
-                } else {
-                    push_event(
-                        &mut out_events,
-                        &mut in_footnote_def,
-                        Event::Text(CowStr::from(replaced)),
-                    );
-                }
+                handle_text_event(&t, in_link_depth, &mut out_events, &mut in_footnote_def);
             }
             other => push_event(&mut out_events, &mut in_footnote_def, other),
         }
     }
 
-    let mut html_out = String::with_capacity(body_md.len() + front_matter_html.len() + 256);
-    html_out.push_str(front_matter_html);
-    pulldown_cmark::html::push_html(&mut html_out, out_events.into_iter());
-
-    // Remove empty `<tbody>\n</tbody>` generated for header-only tables
-    html_out = html_out.replace("<tbody>\n</tbody>\n", "");
-
-    // Render collected footnotes at the bottom of the article in reference order
-    if !footnote_order.is_empty() {
-        html_out.push_str("<div class=\"footnotes\" role=\"doc-endnotes\">\n<hr>\n<ol>\n");
-        for name in &footnote_order {
-            let num = footnote_numbers[name];
-            let mut def_html = String::new();
-            if let Some(events) = footnote_defs.remove(name) {
-                pulldown_cmark::html::push_html(&mut def_html, events.into_iter());
-            }
-            let backref = format!(
-                "\u{00a0}<a href=\"#fnref:{num}\" class=\"footnote-backref\" role=\"doc-backlink\">\u{21a9}\u{fe0e}</a>"
-            );
-            let trimmed = def_html.trim_end();
-            if let Some(before_p) = trimmed.strip_suffix("</p>") {
-                let _ = write!(html_out, "<li id=\"fn:{num}\">\n{before_p}{backref}</p>\n</li>\n");
-            } else {
-                let _ = write!(html_out, "<li id=\"fn:{num}\">\n{def_html}{backref}\n</li>\n");
-            }
-        }
-        html_out.push_str("</ol>\n</div>\n");
-    }
+    let html_out = assemble_html(
+        front_matter_html,
+        body_md.len(),
+        out_events,
+        &footnote_order,
+        &footnote_numbers,
+        footnote_defs,
+    );
 
     RenderedBody {
         html: html_out,
@@ -758,14 +836,11 @@ fn render_toc(headings: &[HeadingEntry]) -> Option<String> {
 
     for h in filtered {
         let lvl = h.level;
-        if stack.is_empty() {
-            html.push_str("<ul>\n<li>\n");
-            stack.push(lvl);
-        } else if lvl > *stack.last().unwrap() {
+        if stack.last().is_none_or(|&last| lvl > last) {
             html.push_str("<ul>\n<li>\n");
             stack.push(lvl);
         } else {
-            while stack.len() > 1 && *stack.last().unwrap() > lvl {
+            while stack.len() > 1 && stack.last().is_some_and(|&last| last > lvl) {
                 stack.pop();
                 html.push_str("</li>\n</ul>\n");
             }
@@ -788,7 +863,5 @@ fn render_toc(headings: &[HeadingEntry]) -> Option<String> {
         html.push_str("</li>\n</ul>\n");
     }
 
-    // Keep track of used imports for compiler lint cleanliness
-    let _ = HashSet::<u8>::new;
     Some(html)
 }

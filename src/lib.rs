@@ -71,6 +71,8 @@ pub struct Options {
     pub light_style: String,
     /// Syntax highlighting style name for dark mode.
     pub dark_style: String,
+    /// Author name (e.g. for EPUB metadata).
+    pub author: Option<String>,
     /// Whether the page is being served over HTTP (`--watch`), keeping relative
     /// links intact instead of converting them to `file://` URLs.
     pub served: bool,
@@ -115,7 +117,7 @@ pub struct Config {
 )]
 struct Cli {
     /// Skip auto-preview; just print the file path or URL.
-    #[arg(short = 's', long = "skip")]
+    #[arg(long = "skip")]
     skip: bool,
 
     /// Open the table of contents drawer by default.
@@ -146,17 +148,28 @@ struct Cli {
     #[arg(short = 'l', long = "light")]
     light: bool,
 
-    /// Code highlighting style (github, solarized, ocean, eighties/darcula, mocha).
-    #[arg(long = "style", default_value = DEFAULT_STYLE, value_name = "STYLE")]
+    /// Code highlighting style (github, tomorrow-night, ayu, railscasts, railscasts-dark, tokyo-night, solarized, ocean, darcula, mocha).
+    #[arg(short = 's', long = "style", default_value = DEFAULT_STYLE, value_name = "STYLE")]
     style: String,
 
     /// Code highlighting style for dark mode only.
     #[arg(long = "dark-style", value_name = "STYLE")]
     dark_style: Option<String>,
 
+    /// Document author (embedded in EPUB metadata).
+    #[arg(long = "author", value_name = "AUTHOR")]
+    author: Option<String>,
+
     /// Markdown file to preview or convert.
     #[arg(value_name = "FILE")]
     files: Vec<PathBuf>,
+}
+
+/// Renders the complete `--help` message into a string.
+pub fn render_help() -> String {
+    use clap::CommandFactory;
+    let mut cmd = Cli::command();
+    cmd.render_help().to_string()
 }
 
 /// Parses command-line arguments (excluding `argv[0]`) into a validated [`Config`].
@@ -179,11 +192,16 @@ where
     I: IntoIterator<Item = T>,
     T: Into<OsString> + Clone,
 {
+    let args_vec: Vec<OsString> = args.into_iter().map(Into::into).collect();
+    if args_vec.is_empty() {
+        let help = render_help();
+        let _ = write!(stderr, "{help}");
+        bail!("{help}");
+    }
+
     // `clap::Parser::try_parse_from` expects `argv[0]` (the program name) as the
-    // first element of the iterator, so we prepend `"mdp"` with `std::iter::once`
-    // and `.chain(...)` without allocating an intermediate `Vec`.
-    let full_args = std::iter::once(OsString::from("mdp"))
-        .chain(args.into_iter().map(Into::into));
+    // first element of the iterator, so we prepend `"mdp"` with `std::iter::once`.
+    let full_args = std::iter::once(OsString::from("mdp")).chain(args_vec);
 
     let cli = match Cli::try_parse_from(full_args) {
         Ok(c) => c,
@@ -267,6 +285,7 @@ where
             theme,
             light_style,
             dark_style,
+            author: cli.author,
             served: false,
         },
     })

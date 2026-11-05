@@ -35,10 +35,11 @@ use anyhow::Result;
 use regex::Regex;
 use serde::Serialize;
 use std::fmt;
+use std::io::Cursor;
 use std::sync::LazyLock;
 use syntect::highlighting::ThemeSet;
 use syntect::html::{ClassStyle, ClassedHTMLGenerator, css_for_theme_with_class_style};
-use syntect::parsing::SyntaxSet;
+use syntect::parsing::{SyntaxSet, syntax_definition::SyntaxDefinition};
 use syntect::util::LinesWithEndings;
 
 /// Default code syntax highlighting style name.
@@ -64,11 +65,106 @@ const DARK_CSS: &str = include_str!("../assets/github-dark.css");
 //   them in `LazyLock` deserializes the grammar and theme sets once on first
 //   access and shares them immutably across all threads (`SyntaxSet` and
 //   `ThemeSet` both implement `Sync`).
-/// Lazily initialized default `syntect` syntax definitions.
-static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(SyntaxSet::load_defaults_newlines);
+/// Embedded TOML syntax definition (`assets/TOML.sublime-syntax`).
+const TOML_SYNTAX: &str = include_str!("../assets/TOML.sublime-syntax");
 
-/// Lazily initialized default `syntect` theme collection.
-static THEME_SET: LazyLock<ThemeSet> = LazyLock::new(ThemeSet::load_defaults);
+/// Embedded Kotlin syntax definition (`assets/Kotlin.sublime-syntax`).
+const KOTLIN_SYNTAX: &str = include_str!("../assets/Kotlin.sublime-syntax");
+
+/// Embedded Elixir syntax definition (`assets/Elixir.sublime-syntax`).
+const ELIXIR_SYNTAX: &str = include_str!("../assets/Elixir.sublime-syntax");
+
+/// Embedded Swift syntax definition (`assets/Swift.sublime-syntax`).
+const SWIFT_SYNTAX: &str = include_str!("../assets/Swift.sublime-syntax");
+
+/// Embedded Elm syntax definition (`assets/Elm.sublime-syntax`).
+const ELM_SYNTAX: &str = include_str!("../assets/Elm.sublime-syntax");
+
+/// Embedded PureScript syntax definition (`assets/PureScript.sublime-syntax`).
+const PURESCRIPT_SYNTAX: &str = include_str!("../assets/PureScript.sublime-syntax");
+
+/// Embedded Dockerfile syntax definition (`assets/Dockerfile.sublime-syntax`).
+const DOCKERFILE_SYNTAX: &str = include_str!("../assets/Dockerfile.sublime-syntax");
+
+/// Embedded GitHub Dark `.tmTheme` (`assets/GitHub-Dark.tmTheme`).
+const GITHUB_DARK_THEME: &str = include_str!("../assets/GitHub-Dark.tmTheme");
+
+/// Embedded Darcula `.tmTheme` (`assets/Darcula.tmTheme`).
+const DARCULA_THEME: &str = include_str!("../assets/Darcula.tmTheme");
+
+/// Embedded Railscasts `.tmTheme` (`assets/Railscasts.tmTheme`).
+const RAILSCASTS_THEME: &str = include_str!("../assets/Railscasts.tmTheme");
+
+/// Embedded Railscasts Dark `.tmTheme` (`assets/railscasts-dark.tmTheme`).
+const RAILSCASTS_DARK_THEME: &str = include_str!("../assets/railscasts-dark.tmTheme");
+
+/// Embedded TokyoNight Night `.tmTheme` (`assets/tokyonight_night.tmTheme`).
+const TOKYONIGHT_NIGHT_THEME: &str = include_str!("../assets/tokyonight_night.tmTheme");
+
+/// Embedded TokyoNight Day `.tmTheme` (`assets/tokyonight_day.tmTheme`).
+const TOKYONIGHT_DAY_THEME: &str = include_str!("../assets/tokyonight_day.tmTheme");
+
+/// Embedded Tomorrow `.tmTheme` (`assets/tomorrow.tmTheme`).
+const TOMORROW_THEME: &str = include_str!("../assets/tomorrow.tmTheme");
+
+/// Embedded Tomorrow Night `.tmTheme` (`assets/tomorrow-night.tmTheme`).
+const TOMORROW_NIGHT_THEME: &str = include_str!("../assets/tomorrow-night.tmTheme");
+
+/// Embedded Ayu Dark `.tmTheme` (`assets/ayu-dark.tmTheme`).
+const AYU_DARK_THEME: &str = include_str!("../assets/ayu-dark.tmTheme");
+
+/// Embedded Ayu Light `.tmTheme` (`assets/ayu-light.tmTheme`).
+const AYU_LIGHT_THEME: &str = include_str!("../assets/ayu-light.tmTheme");
+
+/// Lazily initialized `syntect` syntax definitions, including default syntaxes, TOML, Kotlin, Elixir, Swift, Elm, PureScript, and Dockerfile.
+static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(|| {
+    let mut builder = SyntaxSet::load_defaults_newlines().into_builder();
+    if let Ok(toml_def) = SyntaxDefinition::load_from_str(TOML_SYNTAX, true, Some("toml")) {
+        builder.add(toml_def);
+    }
+    if let Ok(kt_def) = SyntaxDefinition::load_from_str(KOTLIN_SYNTAX, true, Some("kotlin")) {
+        builder.add(kt_def);
+    }
+    if let Ok(ex_def) = SyntaxDefinition::load_from_str(ELIXIR_SYNTAX, true, Some("elixir")) {
+        builder.add(ex_def);
+    }
+    if let Ok(sw_def) = SyntaxDefinition::load_from_str(SWIFT_SYNTAX, true, Some("swift")) {
+        builder.add(sw_def);
+    }
+    if let Ok(elm_def) = SyntaxDefinition::load_from_str(ELM_SYNTAX, true, Some("elm")) {
+        builder.add(elm_def);
+    }
+    if let Ok(purs_def) = SyntaxDefinition::load_from_str(PURESCRIPT_SYNTAX, true, Some("purescript")) {
+        builder.add(purs_def);
+    }
+    if let Ok(df_def) = SyntaxDefinition::load_from_str(DOCKERFILE_SYNTAX, true, Some("dockerfile")) {
+        builder.add(df_def);
+    }
+    builder.build()
+});
+
+/// Lazily initialized `syntect` theme collection, including default themes and custom embedded themes.
+static THEME_SET: LazyLock<ThemeSet> = LazyLock::new(|| {
+    let mut ts = ThemeSet::load_defaults();
+    let themes: &[(&str, &str)] = &[
+        ("GitHub Dark", GITHUB_DARK_THEME),
+        ("Darcula", DARCULA_THEME),
+        ("Railscasts", RAILSCASTS_THEME),
+        ("Railscasts Dark", RAILSCASTS_DARK_THEME),
+        ("TokyoNight Night", TOKYONIGHT_NIGHT_THEME),
+        ("TokyoNight Day", TOKYONIGHT_DAY_THEME),
+        ("Tomorrow", TOMORROW_THEME),
+        ("Tomorrow Night", TOMORROW_NIGHT_THEME),
+        ("Ayu Dark", AYU_DARK_THEME),
+        ("Ayu Light", AYU_LIGHT_THEME),
+    ];
+    for &(name, content) in themes {
+        if let Ok(t) = ThemeSet::load_from_reader(&mut Cursor::new(content.as_bytes())) {
+            ts.themes.insert(name.to_string(), t);
+        }
+    }
+    ts
+});
 
 /// Starting color scheme for the rendered page.
 ///
@@ -140,14 +236,14 @@ struct BuiltinStyle {
     dark: &'static str,
 }
 
-/// The five built-in syntax highlighting families.
+/// The built-in syntax highlighting families.
 const BUILTIN_STYLES: &[BuiltinStyle] = &[
     BuiltinStyle {
         id: "github",
         label: "GitHub",
         aliases: &["github", "github-light", "github-dark"],
         light: "InspiredGitHub",
-        dark: "base16-ocean.dark",
+        dark: "GitHub Dark",
     },
     BuiltinStyle {
         id: "solarized",
@@ -164,11 +260,56 @@ const BUILTIN_STYLES: &[BuiltinStyle] = &[
         dark: "base16-ocean.dark",
     },
     BuiltinStyle {
-        id: "eighties",
-        label: "Eighties",
-        aliases: &["eighties", "darcula"],
-        light: "base16-eighties.dark",
-        dark: "base16-eighties.dark",
+        id: "darcula",
+        label: "Darcula",
+        aliases: &["darcula", "eighties"],
+        light: "Darcula",
+        dark: "Darcula",
+    },
+    BuiltinStyle {
+        id: "railscasts",
+        label: "Railscasts",
+        aliases: &["railscasts", "railscasts-vscode"],
+        light: "Railscasts",
+        dark: "Railscasts",
+    },
+    BuiltinStyle {
+        id: "railscasts-dark",
+        label: "Railscasts Dark",
+        aliases: &["railscasts-dark", "railscasts-neovim", "railscasts-nvim"],
+        light: "Railscasts Dark",
+        dark: "Railscasts Dark",
+    },
+    BuiltinStyle {
+        id: "tokyo-night",
+        label: "Tokyo Night",
+        aliases: &[
+            "tokyo-night",
+            "tokyonight",
+            "tokyo-night-dark",
+            "tokyo-night-day",
+        ],
+        light: "TokyoNight Day",
+        dark: "TokyoNight Night",
+    },
+    BuiltinStyle {
+        id: "tomorrow-night",
+        label: "Tomorrow Night",
+        aliases: &[
+            "tomorrow-night",
+            "tomorrow",
+            "tomorrow-night-eighties",
+            "mdbook",
+        ],
+        light: "Tomorrow",
+        dark: "Tomorrow Night",
+    },
+    BuiltinStyle {
+        id: "ayu",
+        label: "Ayu",
+        aliases: &["ayu", "ayu-dark", "ayu-light"],
+        light: "Ayu Light",
+        dark: "Ayu Dark",
     },
     BuiltinStyle {
         id: "mocha",
@@ -191,8 +332,12 @@ pub fn available_styles() -> &'static [&'static str] {
         "ocean",
         "ocean-light",
         "ocean-dark",
-        "eighties",
         "darcula",
+        "railscasts",
+        "railscasts-dark",
+        "tokyo-night",
+        "tomorrow-night",
+        "ayu",
         "mocha",
     ]
 }
@@ -226,11 +371,22 @@ pub fn resolve_theme_name(name: &str, for_dark: bool) -> String {
     let lower = name.to_ascii_lowercase();
     match lower.as_str() {
         "github-light" => return "InspiredGitHub".to_string(),
-        "github-dark" => return "base16-ocean.dark".to_string(),
+        "github-dark" => return "GitHub Dark".to_string(),
         "solarized-light" => return "Solarized (light)".to_string(),
         "solarized-dark" => return "Solarized (dark)".to_string(),
         "ocean-light" => return "base16-ocean.light".to_string(),
         "ocean-dark" => return "base16-ocean.dark".to_string(),
+        "darcula" => return "Darcula".to_string(),
+        "railscasts" | "railscasts-vscode" => return "Railscasts".to_string(),
+        "railscasts-dark" | "railscasts-neovim" | "railscasts-nvim" => {
+            return "Railscasts Dark".to_string();
+        }
+        "tokyo-night-day" => return "TokyoNight Day".to_string(),
+        "tokyo-night-dark" => return "TokyoNight Night".to_string(),
+        "tomorrow" => return "Tomorrow".to_string(),
+        "tomorrow-night" | "mdbook" => return "Tomorrow Night".to_string(),
+        "ayu-light" => return "Ayu Light".to_string(),
+        "ayu" | "ayu-dark" => return "Ayu Dark".to_string(),
         _ => {}
     }
     for s in BUILTIN_STYLES {
@@ -321,7 +477,7 @@ pub fn stylesheet(choices: &[CodeStyle]) -> Result<String> {
 }
 
 /// Generates the raw CSS rules for a single `syntect` theme.
-fn highlight_css(theme_name: &str) -> Result<String> {
+pub fn highlight_css(theme_name: &str) -> Result<String> {
     let theme = THEME_SET
         .themes
         .get(theme_name)
@@ -343,16 +499,33 @@ fn highlight_css(theme_name: &str) -> Result<String> {
     Ok(css)
 }
 
-/// Regex matching top-level selectors in `syntect`-generated CSS.
-static SELECTOR_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?m)^(\.(?:sy-[\w-]+|chroma))\b").expect("valid selector regex"));
+/// Regex matching CSS rules in `syntect`-generated stylesheets.
+static RULE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?s)([^{}]+)\{([^}]+)\}").expect("valid rule regex"));
 
 /// Scopes `syntect` CSS selectors to `[data-theme="<th_name>"][data-code-style="<id>"]`.
 fn scope_css(css: &str, id: &str, th: Theme) -> String {
-    let prefix = format!(r#":root[data-theme="{}"][data-code-style="{}"] "#, th, id);
-    SELECTOR_RE
+    let prefix = format!(r#":root[data-theme="{}"][data-code-style="{}"]"#, th, id);
+    RULE_RE
         .replace_all(css, |caps: &regex::Captures<'_>| {
-            format!("{prefix}{}", &caps[1])
+            let mut selectors_raw = &caps[1];
+            let body = &caps[2];
+            let mut comment = "";
+            if let Some(c_end) = selectors_raw.rfind("*/") {
+                comment = &selectors_raw[..c_end + 2];
+                selectors_raw = &selectors_raw[c_end + 2..];
+            }
+            let scoped: Vec<String> = selectors_raw
+                .split(',')
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .map(|s| format!("{prefix} {s}"))
+                .collect();
+            if comment.is_empty() {
+                format!("{} {{{body}}}", scoped.join(", "))
+            } else {
+                format!("{comment}\n{} {{{body}}}", scoped.join(", "))
+            }
         })
         .into_owned()
 }
@@ -381,12 +554,22 @@ pub fn highlight_code(code: &str, lang: &str) -> String {
         );
     }
 
+    let lang_lower = lang.to_ascii_lowercase();
+    let token = match lang_lower.as_str() {
+        "typescript" | "ts" | "tsx" => "js",
+        "shell" | "console" | "zsh" => "bash",
+        "proto" => "protobuf",
+        "dockerfile" => "dockerfile",
+        other => other,
+    };
+
     // `let Some(syntax) = ... else { return ...; }` (let-else statement,
     // stabilized in Rust 1.65): binds `syntax` in the outer scope if the
     // `Option` is `Some`, or diverges (returns early) in the `else` block,
     // avoiding rightward drift from nested `match` / `if let` blocks.
     let Some(syntax) = SYNTAX_SET
-        .find_syntax_by_token(lang)
+        .find_syntax_by_token(token)
+        .or_else(|| SYNTAX_SET.find_syntax_by_token(lang))
         .filter(|s| s.name != "Plain Text")
     else {
         return format!(
@@ -408,3 +591,5 @@ pub fn highlight_code(code: &str, lang: &str) -> String {
     let html = generator.finalize();
     format!("<pre class=\"chroma\"><code>{html}</code></pre>\n")
 }
+
+

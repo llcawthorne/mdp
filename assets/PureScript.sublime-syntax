@@ -1,0 +1,479 @@
+%YAML 1.2
+---
+# https://www.sublimetext.com/docs/syntax.html
+name: PureScript
+version: 2
+file_extensions:
+  - purs
+  - purescript
+scope: source.purescript
+
+variables:
+  lower_start: '(?:[[:lower:]]|_)'
+  upper_start: '[[:upper:]]'
+  ident_continue: '[[:alnum:]_'']'
+  lower_ident: '{{lower_start}}{{ident_continue}}*'
+  upper_ident: '{{upper_start}}{{ident_continue}}*'
+  module_name: '{{upper_ident}}(?:\.{{upper_ident}})*'
+  operator_char: '(?:[:!#$%&*+./<=>?@\\^|~+-]|\p{S})'
+  operator: '{{operator_char}}+'
+
+contexts:
+  main:
+    - include: shebang
+    - include: comments
+    - include: module-declaration
+    - include: import-declaration
+    - include: foreign-declarations
+    - include: role-declaration
+    - include: kind-signature-declarations
+    - include: type-declarations
+    - include: class-declarations
+    - include: instance-declarations
+    - include: fixity-declarations
+    - include: signatures
+    - include: value-declarations
+    - include: literals
+    - include: labels
+    - include: keywords
+    - include: qualified-operators
+    - include: qualified-names
+    - include: names
+    - include: punctuation
+    - include: operators
+
+  shebang:
+    - match: '\A#!.*$'
+      scope: comment.line.shebang.purescript
+
+  comments:
+    - match: '--.*$'
+      scope: comment.line.double-dash.purescript
+    - match: '\{-'
+      scope: punctuation.definition.comment.begin.purescript
+      push:
+        - meta_scope: comment.block.purescript
+        - match: '-\}'
+          scope: punctuation.definition.comment.end.purescript
+          pop: true
+
+  module-declaration:
+    - match: '^\s*(module)\b'
+      captures:
+        1: keyword.other.module.purescript
+      push:
+        - meta_scope: meta.declaration.module.purescript
+        - match: '\b(where)\b'
+          captures:
+            1: keyword.other.where.purescript
+          pop: true
+        - include: comments
+        - include: export-list
+        - match: '\b{{module_name}}\b'
+          scope: support.other.module.purescript
+        - include: literals
+        - include: keywords
+        - include: punctuation
+        - include: operators
+
+  export-list:
+    - match: '\('
+      scope: punctuation.section.parens.begin.purescript
+      push:
+        - meta_scope: meta.export-list.purescript
+        - match: '\)'
+          scope: punctuation.section.parens.end.purescript
+          pop: true
+        - include: comments
+        - include: export-keywords
+        - include: data-members
+        - include: literals
+        - include: qualified-operators
+        - include: qualified-names
+        - include: names
+        - include: punctuation
+        - include: operators
+
+  export-keywords:
+    - match: '\b(class|module|type)\b'
+      scope: keyword.other.export.purescript
+
+  data-members:
+    - match: '\(\.\.\)'
+      scope: keyword.operator.ellipsis.purescript
+
+  import-declaration:
+    - match: '^\s*(import)\b'
+      captures:
+        1: keyword.control.import.purescript
+      push:
+        - meta_scope: meta.import.purescript
+        - match: '$'
+          pop: true
+        - include: comments
+        - match: '\b(as|hiding)\b'
+          scope: keyword.control.import.purescript
+        - match: '\b(class|type)\b'
+          scope: keyword.other.import.purescript
+        - match: '\b{{module_name}}\b'
+          scope: support.other.module.purescript
+        - include: import-list
+        - include: data-members
+        - include: literals
+        - include: qualified-operators
+        - include: qualified-names
+        - include: names
+        - include: punctuation
+        - include: operators
+
+  import-list:
+    - match: '\('
+      scope: punctuation.section.parens.begin.purescript
+      push:
+        - meta_scope: meta.import-list.purescript
+        - match: '\)'
+          scope: punctuation.section.parens.end.purescript
+          pop: true
+        - include: comments
+        - match: '\b(class|type)\b'
+          scope: keyword.other.import.purescript
+        - include: data-members
+        - include: literals
+        - include: qualified-operators
+        - include: qualified-names
+        - include: names
+        - include: punctuation
+        - include: operators
+
+  foreign-declarations:
+    - match: '^\s*(foreign)\s+(import)\s+(data)\s+({{upper_ident}})\b'
+      scope: meta.declaration.foreign.data.purescript
+      captures:
+        1: keyword.other.foreign.purescript
+        2: keyword.other.import.purescript
+        3: keyword.other.data.purescript
+        4: entity.name.type.foreign.purescript
+    - match: '^\s*(foreign)\s+(import)\s+({{lower_ident}})\b'
+      scope: meta.declaration.foreign.value.purescript
+      captures:
+        1: keyword.other.foreign.purescript
+        2: keyword.other.import.purescript
+        3: entity.name.function.foreign.purescript
+
+  role-declaration:
+    - match: '^\s*(type)\s+(role)\s+({{upper_ident}})\b'
+      captures:
+        1: keyword.other.type.purescript
+        2: keyword.other.role.purescript
+        3: entity.name.type.purescript
+      push:
+        - meta_scope: meta.declaration.role.purescript
+        - match: '$'
+          pop: true
+        - include: comments
+        - match: '\b(nominal|phantom|representational)\b'
+          scope: storage.modifier.role.purescript
+        - include: names
+
+  kind-signature-declarations:
+    - match: '^\s*(data|newtype|type)\s+({{upper_ident}})\s*(::|∷)'
+      scope: meta.declaration.kind-signature.purescript
+      captures:
+        1: keyword.other.declaration.purescript
+        2: entity.name.type.purescript
+        3: keyword.operator.has-type.purescript
+    - match: '^\s*(class)\s+({{upper_ident}})\s*(::|∷)'
+      scope: meta.declaration.kind-signature.class.purescript
+      captures:
+        1: keyword.other.class.purescript
+        2: entity.name.typeclass.purescript
+        3: keyword.operator.has-type.purescript
+
+  type-declarations:
+    - match: '^\s*(data|newtype)\s+({{upper_ident}})\b'
+      captures:
+        1: keyword.other.declaration.purescript
+        2: entity.name.type.purescript
+      push:
+        - meta_scope: meta.declaration.data.purescript
+        - match: '$'
+          pop: true
+        - include: comments
+        - match: '(\|)\s*({{upper_ident}})\b'
+          captures:
+            1: keyword.operator.union.purescript
+            2: entity.name.function.constructor.purescript
+        - match: '(=)\s*({{upper_ident}})\b'
+          captures:
+            1: keyword.operator.assignment.purescript
+            2: entity.name.function.constructor.purescript
+        - include: literals
+        - include: labels
+        - include: keywords
+        - include: qualified-operators
+        - include: qualified-names
+        - include: names
+        - include: punctuation
+        - include: operators
+    - match: '^\s*(type)\s+({{upper_ident}})\b'
+      captures:
+        1: keyword.other.type.purescript
+        2: entity.name.type.purescript
+      push:
+        - meta_scope: meta.declaration.type.purescript
+        - match: '$'
+          pop: true
+        - include: comments
+        - include: literals
+        - include: labels
+        - include: keywords
+        - include: qualified-operators
+        - include: qualified-names
+        - include: names
+        - include: punctuation
+        - include: operators
+
+  class-declarations:
+    - match: '^\s*(class)\b'
+      captures:
+        1: keyword.other.class.purescript
+      push:
+        - meta_scope: meta.declaration.class.purescript
+        - match: '\b(where)\b|$'
+          captures:
+            1: keyword.other.where.purescript
+          pop: true
+        - include: comments
+        - match: '\b{{upper_ident}}\b'
+          scope: entity.name.typeclass.purescript
+        - include: literals
+        - include: labels
+        - include: keywords
+        - include: qualified-operators
+        - include: qualified-names
+        - include: names
+        - include: punctuation
+        - include: operators
+
+  instance-declarations:
+    - match: '^\s*(derive)\s+(newtype)\s+(instance)\b'
+      captures:
+        1: keyword.other.derive.purescript
+        2: keyword.other.newtype.purescript
+        3: keyword.other.instance.purescript
+      push: instance-head
+    - match: '^\s*(derive)\s+(instance)\b'
+      captures:
+        1: keyword.other.derive.purescript
+        2: keyword.other.instance.purescript
+      push: instance-head
+    - match: '^\s*(instance)\b'
+      captures:
+        1: keyword.other.instance.purescript
+      push: instance-head
+
+  instance-head:
+    - meta_scope: meta.declaration.instance.purescript
+    - match: '\b(where)\b|$'
+      captures:
+        1: keyword.other.where.purescript
+      pop: true
+    - include: comments
+    - match: '({{lower_ident}})\s*(::|∷)'
+      captures:
+        1: entity.name.instance.purescript
+        2: keyword.operator.has-type.purescript
+    - include: literals
+    - include: labels
+    - include: keywords
+    - include: qualified-operators
+    - include: qualified-names
+    - include: names
+    - include: punctuation
+    - include: operators
+
+  fixity-declarations:
+    - match: '^\s*(infixl|infixr|infix)\s+([0-9]+)'
+      captures:
+        1: keyword.other.fixity.purescript
+        2: constant.numeric.integer.purescript
+      push:
+        - meta_scope: meta.declaration.fixity.purescript
+        - match: '$'
+          pop: true
+        - include: comments
+        - match: '\b(type|as)\b'
+          scope: keyword.other.fixity.purescript
+        - include: qualified-operators
+        - include: qualified-names
+        - include: names
+        - include: punctuation
+        - include: operators
+
+  signatures:
+    - match: '^\s*({{lower_ident}})\s*(::|∷)'
+      captures:
+        1: entity.name.function.purescript
+        2: keyword.operator.has-type.purescript
+      push:
+        - meta_scope: meta.declaration.signature.purescript
+        - match: '$'
+          pop: true
+        - include: comments
+        - include: literals
+        - include: labels
+        - include: keywords
+        - include: qualified-operators
+        - include: qualified-names
+        - include: names
+        - include: punctuation
+        - include: operators
+    - match: '^\s*(\({{operator}}\))\s*(::|∷)'
+      captures:
+        1: entity.name.function.operator.purescript
+        2: keyword.operator.has-type.purescript
+      push:
+        - meta_scope: meta.declaration.signature.operator.purescript
+        - match: '$'
+          pop: true
+        - include: comments
+        - include: literals
+        - include: labels
+        - include: keywords
+        - include: qualified-operators
+        - include: qualified-names
+        - include: names
+        - include: punctuation
+        - include: operators
+
+  value-declarations:
+    - match: '^\s*(?!(?:ado|case|class|data|derive|do|else|false|foreign|forall|if|import|in|infix|infixl|infixr|instance|let|module|newtype|of|then|true|type|where)\b)({{lower_ident}})\b(?=.*=)'
+      captures:
+        1: entity.name.function.purescript
+
+  literals:
+    - include: raw-strings
+    - include: strings
+    - include: chars
+    - include: holes
+    - include: booleans
+    - include: numbers
+
+  raw-strings:
+    - match: '"""'
+      scope: punctuation.definition.string.begin.purescript
+      push:
+        - meta_scope: string.quoted.triple.purescript
+        - match: '"""'
+          scope: punctuation.definition.string.end.purescript
+          pop: true
+
+  strings:
+    - match: '"'
+      scope: punctuation.definition.string.begin.purescript
+      push:
+        - meta_scope: string.quoted.double.purescript
+        - match: '"'
+          scope: punctuation.definition.string.end.purescript
+          pop: true
+        - match: '\\(?:[trn"''\\]|x[0-9a-fA-F]{0,6})'
+          scope: constant.character.escape.purescript
+        - match: '\\(?:[ \t]|\r|\n)*\\'
+          scope: constant.character.escape.gap.purescript
+        - match: '\\.'
+          scope: invalid.illegal.escape.purescript
+
+  chars:
+    - match: '''(?:[^''\\\r\n]|\\(?:[trn"''\\]|x[0-9a-fA-F]{0,6}))'''
+      scope: string.quoted.single.purescript
+
+  holes:
+    - match: '\?{{ident_continue}}+'
+      scope: constant.other.hole.purescript
+
+  booleans:
+    - match: '\b(true|false)\b'
+      scope: constant.language.boolean.purescript
+
+  numbers:
+    - match: '\b0x[0-9a-fA-F]+\b'
+      scope: constant.numeric.integer.hexadecimal.purescript
+    - match: '\b(?:0|[1-9][0-9_]*)(?:(?:\.[0-9_]+)(?:e[+-]?(?:0|[1-9][0-9_]*))?|e[+-]?(?:0|[1-9][0-9_]*))\b'
+      scope: constant.numeric.float.purescript
+    - match: '\b(?:0|[1-9][0-9_]*)\b'
+      scope: constant.numeric.integer.purescript
+
+  labels:
+    - match: '\b({{lower_ident}})\b\s*(?=[:=])'
+      captures:
+        1: variable.other.member.purescript
+
+  keywords:
+    - match: '\b(ado|case|do|else|if|in|let|of|then)\b'
+      scope: keyword.control.purescript
+    - match: '\b(class|data|derive|foreign|import|infix|infixl|infixr|instance|module|newtype|type|where)\b'
+      scope: keyword.other.purescript
+    - match: '\b(forall)\b|∀'
+      scope: keyword.other.forall.purescript
+
+  qualified-operators:
+    - match: '\b({{module_name}})\.({{operator}})'
+      captures:
+        1: support.other.module.purescript
+        2: keyword.operator.purescript
+    - match: '\b({{module_name}})\.(\({{operator}}\))'
+      captures:
+        1: support.other.module.purescript
+        2: entity.name.function.operator.purescript
+
+  qualified-names:
+    - match: '\b({{module_name}})\.({{lower_ident}})\b'
+      captures:
+        1: support.other.module.purescript
+        2: variable.other.purescript
+    - match: '\b({{module_name}})\.({{upper_ident}})\b'
+      captures:
+        1: support.other.module.purescript
+        2: support.type.purescript
+
+  names:
+    - match: '\b(Type|Constraint|Row|Symbol|Int|Number|String|Char|Boolean|Unit|Array|Record)\b'
+      scope: support.type.prim.purescript
+    - match: '\b{{upper_ident}}\b'
+      scope: support.type.purescript
+    - match: '\b{{lower_ident}}\b'
+      scope: variable.other.purescript
+
+  punctuation:
+    - match: '[()\[\]{}]'
+      scope: punctuation.section.purescript
+    - match: ','
+      scope: punctuation.separator.comma.purescript
+    - match: '`'
+      scope: punctuation.definition.backtick.purescript
+    - match: '\.'
+      scope: punctuation.accessor.dot.purescript
+    - match: '(?<![[:alnum:]_''])_(?![[:alnum:]_''])'
+      scope: variable.language.wildcard.purescript
+
+  operators:
+    - match: '(::|∷)'
+      scope: keyword.operator.has-type.purescript
+    - match: '(->|→)'
+      scope: keyword.operator.arrow.purescript
+    - match: '(<-|←)'
+      scope: keyword.operator.bind.purescript
+    - match: '(=>|⇒)'
+      scope: keyword.operator.constraint.purescript
+    - match: '<='
+      scope: keyword.operator.superclass.purescript
+    - match: '@'
+      scope: keyword.operator.type-application.purescript
+    - match: '='
+      scope: keyword.operator.assignment.purescript
+    - match: '\|'
+      scope: keyword.operator.union.purescript
+    - match: '\\'
+      scope: keyword.operator.lambda.purescript
+    - match: '{{operator}}'
+      scope: keyword.operator.purescript

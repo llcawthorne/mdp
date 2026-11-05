@@ -26,6 +26,56 @@ fn parse_content_highlights_code() {
     ] {
         assert!(html.contains(want), "result missing {want:?}");
     }
+
+    // Verify TOML syntax highlighting
+    let toml_input = b"```toml\n[dependencies]\nrand = \"0.8.5\"\n```\n";
+    let toml_res = parse_content(toml_input, Path::new(INPUT_FILE), &Options::default())
+        .expect("parse toml content");
+    let toml_html = String::from_utf8_lossy(&toml_res);
+    assert!(
+        toml_html.contains(r#"<span class="sy-entity sy-name sy-section sy-table sy-toml">dependencies</span>"#)
+            || toml_html.contains("sy-toml"),
+        "TOML code block should be highlighted with sy-toml classes, got:\n{toml_html}"
+    );
+
+    // Verify Kotlin syntax highlighting
+    let kt_input = b"```kotlin\nval x: Int = 1\nfun main() {}\n```\n";
+    let kt_res = parse_content(kt_input, Path::new(INPUT_FILE), &Options::default())
+        .expect("parse kotlin content");
+    let kt_html = String::from_utf8_lossy(&kt_res);
+    assert!(
+        kt_html.contains("sy-kotlin"),
+        "Kotlin code block should be highlighted with sy-kotlin classes, got:\n{kt_html}"
+    );
+
+    // Verify Elixir syntax highlighting
+    let ex_input = b"```elixir\ndefmodule Hello do\n  def world do\n    :ok\n  end\nend\n```\n";
+    let ex_res = parse_content(ex_input, Path::new(INPUT_FILE), &Options::default())
+        .expect("parse elixir content");
+    let ex_html = String::from_utf8_lossy(&ex_res);
+    assert!(
+        ex_html.contains("sy-elixir"),
+        "Elixir code block should be highlighted with sy-elixir classes, got:\n{ex_html}"
+    );
+
+    // Verify newly supported languages
+    for (lang, code, expected_class) in [
+        ("swift", "let greeting = \"Hello\"\n", "sy-swift"),
+        ("elm", "type Msg = Increment | Decrement\n", "sy-elm"),
+        ("purescript", "module Main where\n", "sy-purescript"),
+        ("dockerfile", "FROM rust:latest\n", "sy-dockerfile"),
+        ("typescript", "const x: number = 42;\n", "chroma"),
+        ("shell", "curl -s https://example.com\n", "chroma"),
+    ] {
+        let input = format!("```{lang}\n{code}```\n");
+        let res = parse_content(input.as_bytes(), Path::new(INPUT_FILE), &Options::default())
+            .unwrap_or_else(|e| panic!("failed to parse {lang}: {e}"));
+        let html = String::from_utf8_lossy(&res);
+        assert!(
+            html.contains(expected_class),
+            "{lang} code block should contain {expected_class}, got:\n{html}"
+        );
+    }
 }
 
 #[test]
@@ -89,7 +139,7 @@ fn parse_content_theme() {
     const LIGHT_CODE: &str =
         r#":root[data-theme="light"][data-code-style="github"] .chroma { background-color: var(--pre-bg); }"#;
     const DARK_CODE: &str =
-        r#":root[data-theme="dark"][data-code-style="github"] .chroma { background-color: #2b303b;"#;
+        r#":root[data-theme="dark"][data-code-style="github"] .chroma { background-color: #24292e;"#;
 
     let cases = [
         (Theme::Auto, r#"data-theme="light""#, r#"let choice = "auto";"#),
@@ -117,7 +167,8 @@ fn parse_args_flags_and_validation() {
         toc: false,
         theme: Theme::Auto,
         light_style: "InspiredGitHub".to_string(),
-        dark_style: "base16-ocean.dark".to_string(),
+        dark_style: "GitHub Dark".to_string(),
+        author: None,
         served: false,
     };
 
@@ -133,8 +184,9 @@ fn parse_args_flags_and_validation() {
         }
     );
 
-    // Short flags
-    let got = parse_args(["-s", "-w", "-d", "-t", "a.md"], &mut stderr).expect("short flags");
+    // Short flags & style flag
+    let got = parse_args(["--skip", "-w", "-d", "-t", "-s", "railscasts", "a.md"], &mut stderr)
+        .expect("flags");
     assert_eq!(
         got,
         Config {
@@ -144,14 +196,17 @@ fn parse_args_flags_and_validation() {
             opts: Options {
                 toc: true,
                 theme: Theme::Dark,
-                ..default_opts.clone()
+                light_style: "Railscasts".to_string(),
+                dark_style: "Railscasts".to_string(),
+                author: None,
+                served: false,
             },
             ..Config::default()
         }
     );
 
     // Combined short flags
-    let got = parse_args(["-swl", "a.md"], &mut stderr).expect("combined short flags");
+    let got = parse_args(["--skip", "-wl", "a.md"], &mut stderr).expect("combined short flags");
     assert_eq!(
         got,
         Config {
@@ -195,12 +250,13 @@ fn parse_args_flags_and_validation() {
     )
     .expect("dark-style override");
     assert_eq!(got.opts.light_style, "InspiredGitHub");
-    assert_eq!(got.opts.dark_style, "base16-eighties.dark");
+    assert_eq!(got.opts.dark_style, "Darcula");
 
     // Error cases
     let err_cases: &[(&[&str], &str)] = &[
-        (&["-s"], "exactly one"),
-        (&["a.md", "b.md"], "exactly one"),
+        (&[], "Usage: mdp"),
+        (&["--skip"], "expected exactly one"),
+        (&["a.md", "b.md"], "expected exactly one"),
         (&["-w", "-o", "x.html", "a.md"], "--watch can't"),
         (&["-wp", "a.md"], "--watch can't"),
         (&["-we", "a.md"], "--watch can't"),
@@ -208,6 +264,7 @@ fn parse_args_flags_and_validation() {
         (&["-p", "-o", "book.epub", "a.md"], "--pdf and --epub"),
         (&["-d", "-l", "a.md"], "together"),
         (&["--style", "nope", "a.md"], r#"unknown style "nope""#),
+        (&["-s", "nope", "a.md"], r#"unknown style "nope""#),
         (&["--dark-style", "nope", "a.md"], r#"unknown style "nope""#),
         (&["--nope", "a.md"], "--nope"),
     ];
@@ -252,8 +309,8 @@ fn code_style_menu() {
     );
     assert!(html.contains(r#" data-code-style="custom""#));
 
-    // All 5 curated styles have their CSS rules embedded
-    for id in ["github", "solarized", "ocean", "eighties", "mocha"] {
+    // Curated styles have their CSS rules embedded
+    for id in ["github", "solarized", "ocean", "darcula", "railscasts", "mocha"] {
         for th in ["light", "dark"] {
             let needle = format!(r#":root[data-theme="{th}"][data-code-style="{id}"] .chroma"#);
             assert!(html.contains(&needle), "missing {needle}");
@@ -270,57 +327,65 @@ fn available_styles_are_known() {
 
 #[test]
 fn parse_content_toc() {
-    let cases: &[(&str, &str, bool, &[&str], &[&str])] = &[
-        (
-            "lone h1 is the title, so the list starts at h2",
-            "# Title\n\n## One\n\n### One A\n\n## Two\n",
-            false,
-            &[r#"<nav class="toc""#, r##"href="#one""##, r##"href="#one-a""##, r##"href="#two""##],
-            &[r##"href="#title""##],
-        ),
-        (
-            "several h1s are all listed",
-            "# Part 1\n\n## A\n\n# Part 2\n",
-            false,
-            &[r##"href="#part-1""##, r##"href="#a""##, r##"href="#part-2""##],
-            &[],
-        ),
-        (
-            "closed unless asked for",
-            "# Title\n\n## One\n",
-            false,
-            &[r#"<nav class="toc""#, r#"id="toc-toggle""#, r#"aria-expanded="false""#],
-            &[r#"class="toc-open""#],
-        ),
-        (
-            "--toc opens it",
-            "# Title\n\n## One\n",
-            true,
-            &[r#" data-code-style="github" class="toc-open">"#, r#"aria-expanded="true""#],
-            &[],
-        ),
-        (
-            "no headings, no contents or button",
-            "just text\n",
-            true,
-            &[],
-            &["<nav", r#"id="toc-toggle""#, r#"class="toc-open""#],
-        ),
+    struct TocCase<'a> {
+        name: &'a str,
+        input: &'a str,
+        toc: bool,
+        want: &'a [&'a str],
+        not_want: &'a [&'a str],
+    }
+
+    let cases = &[
+        TocCase {
+            name: "lone h1 is the title, so the list starts at h2",
+            input: "# Title\n\n## One\n\n### One A\n\n## Two\n",
+            toc: false,
+            want: &[r#"<nav class="toc""#, r##"href="#one""##, r##"href="#one-a""##, r##"href="#two""##],
+            not_want: &[r##"href="#title""##],
+        },
+        TocCase {
+            name: "several h1s are all listed",
+            input: "# Part 1\n\n## A\n\n# Part 2\n",
+            toc: false,
+            want: &[r##"href="#part-1""##, r##"href="#a""##, r##"href="#part-2""##],
+            not_want: &[],
+        },
+        TocCase {
+            name: "closed unless asked for",
+            input: "# Title\n\n## One\n",
+            toc: false,
+            want: &[r#"<nav class="toc""#, r#"id="toc-toggle""#, r#"aria-expanded="false""#],
+            not_want: &[r#"class="toc-open""#],
+        },
+        TocCase {
+            name: "--toc opens it",
+            input: "# Title\n\n## One\n",
+            toc: true,
+            want: &[r#" data-code-style="github" class="toc-open">"#, r#"aria-expanded="true""#],
+            not_want: &[],
+        },
+        TocCase {
+            name: "no headings, no contents or button",
+            input: "just text\n",
+            toc: true,
+            want: &[],
+            not_want: &["<nav", r#"id="toc-toggle""#, r#"class="toc-open""#],
+        },
     ];
 
-    for &(name, input, toc, want, not_want) in cases {
+    for c in cases {
         let opts = Options {
-            toc,
+            toc: c.toc,
             ..Options::default()
         };
         let result =
-            parse_content(input.as_bytes(), Path::new(INPUT_FILE), &opts).expect("parse_content");
+            parse_content(c.input.as_bytes(), Path::new(INPUT_FILE), &opts).expect("parse_content");
         let html = String::from_utf8_lossy(&result);
-        for &w in want {
-            assert!(html.contains(w), "case {name}: missing {w:?}");
+        for &w in c.want {
+            assert!(html.contains(w), "case {}: missing {w:?}", c.name);
         }
-        for &nw in not_want {
-            assert!(!html.contains(nw), "case {name}: unexpectedly has {nw:?}");
+        for &nw in c.not_want {
+            assert!(!html.contains(nw), "case {}: unexpectedly has {nw:?}", c.name);
         }
     }
 }
@@ -461,6 +526,8 @@ fn run_makes_epub() {
     assert!(nav.contains(r#"href="content.xhtml#tasks""#));
 
     let content = read_entry(&mut archive, "EPUB/content.xhtml");
+    let expected_theme = mdp::epub::epub_theme(Theme::Auto);
+    assert!(content.contains(&format!(r#"data-theme="{expected_theme}" data-code-style="github">"#)));
     assert!(content.contains("Book Title"));
     assert!(
         content.contains("<hr />"),

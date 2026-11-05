@@ -31,8 +31,8 @@ fn main() -> ExitCode {
                 // `&str` borrow when `stderr_buf` is valid UTF-8, or an owned
                 // `String` with `U+FFFD` replacement chars only if invalid bytes exist.
                 let text = String::from_utf8_lossy(&stderr_buf);
-                // clap help/version output starts with the `about` line or `mdp <version>`
-                if text.starts_with("Render Markdown") || text.starts_with("mdp ") {
+                // clap help/version output starts with Usage, about line, or binary name + version
+                if text.starts_with("Render Markdown") || text.starts_with("mdp ") || text.contains("Usage: mdp") {
                     let _ = io::stdout().write_all(&stderr_buf);
                     return ExitCode::SUCCESS;
                 }
