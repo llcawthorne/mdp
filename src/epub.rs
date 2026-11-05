@@ -5,7 +5,7 @@
 //! Open Container Format (`.epub`) ZIP archive.
 
 use crate::github::escape_html;
-use crate::render::{FRAGMENT_ENCODE_SET, HeadingEntry, render_document_epub, slug};
+use crate::render::{FRAGMENT_ENCODE_SET, HeadingEntry, render_document, slug};
 use crate::style::{Theme, highlight_css, resolve_theme_name};
 use crate::{Config, Options, preview};
 use anyhow::{Context, Result};
@@ -78,12 +78,7 @@ pub fn epub_theme(th: Theme) -> Theme {
 /// Renders `input` Markdown bytes into an in-memory EPUB 3 archive.
 pub fn build_epub(input: &[u8], filename: &Path, opts: &Options) -> Result<Vec<u8>> {
     let effective_theme = epub_theme(opts.theme);
-    let active_theme_name = if effective_theme == Theme::Dark {
-        resolve_theme_name(&opts.dark_style, true)
-    } else {
-        resolve_theme_name(&opts.light_style, false)
-    };
-    let doc = render_document_epub(input, filename, opts, &active_theme_name)?;
+    let doc = render_document(input, filename, opts)?;
 
     let book_id = {
         let s = slug(&doc.title);
@@ -103,12 +98,7 @@ pub fn build_epub(input: &[u8], filename: &Path, opts: &Options) -> Result<Vec<u
         &html_to_xhtml(&doc.body),
     );
 
-    // E-readers (Apple Books, Calibre, e-ink devices) often do not execute JavaScript
-    // or support multi-attribute `:root[data-theme][data-code-style]` selector scoping.
-    // In addition to scoped CSS rules, prepend the direct syntax rules for the active style
-    // so every EPUB reader renders syntax highlighting out of the box.
-    let direct_highlight_css = highlight_css(&active_theme_name).unwrap_or_default();
-    let epub_css = format!("{direct_highlight_css}\n{}", doc.css);
+    let epub_css = build_epub_css(opts, &doc.css);
 
     let mut zip = ZipWriter::new(Cursor::new(Vec::new()));
 
@@ -211,9 +201,11 @@ fn render_nav_xhtml(title: &str, headings: &[HeadingEntry]) -> String {
     format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="en">
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="en" class="ibooks-dark-theme-use-custom-text-color">
 <head>
   <meta charset="utf-8" />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="supported-color-schemes" content="light dark" />
   <title>{escaped_title}</title>
   <link rel="stylesheet" type="text/css" href="style.css" />
 </head>
@@ -251,9 +243,11 @@ fn render_content_xhtml(
     format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="en" data-theme="{theme_str}" data-code-style="{escaped_style}">
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="en" class="ibooks-dark-theme-use-custom-text-color" data-theme="{theme_str}" data-code-style="{escaped_style}">
 <head>
   <meta charset="utf-8" />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="supported-color-schemes" content="light dark" />
   <title>{escaped_title}</title>
   <link rel="stylesheet" type="text/css" href="style.css" />
 </head>
@@ -264,4 +258,117 @@ fn render_content_xhtml(
 </html>
 "#
     )
+}
+
+/// Builds the complete stylesheet for EPUB output.
+///
+/// Combines base styling (`github.css`, `github-dark.css`), color scheme declarations
+/// for e-readers (`color-scheme: light dark`), default light-mode syntax highlighting,
+/// and dark-mode syntax overrides with `-webkit-text-fill-color` and `!important`
+/// under `@media (prefers-color-scheme: dark)` and Apple Books Night hooks.
+fn build_epub_css(opts: &Options, doc_css: &str) -> String {
+    let light_theme_name = resolve_theme_name(&opts.light_style, false);
+    let dark_theme_name = resolve_theme_name(&opts.dark_style, true);
+
+    let light_highlight = highlight_css(&light_theme_name).unwrap_or_default();
+    let dark_highlight = highlight_css(&dark_theme_name).unwrap_or_default();
+    let dark_rules = epub_dark_rules(&dark_highlight);
+
+    format!(
+        r#":root {{
+  color-scheme: light dark;
+  supported-color-schemes: light dark;
+}}
+
+/* Base code block styling */
+pre.chroma {{
+  padding: 16px;
+  overflow: auto;
+  line-height: 1.45;
+  border-radius: 6px;
+  background-color: #f6f8fa;
+  border: 1px solid rgba(128, 128, 128, 0.18);
+}}
+
+/* Light mode syntax rules */
+{light_highlight}
+
+/* Adaptive Light mode overrides when e-reader switches to White/Sepia/Gray */
+@media (prefers-color-scheme: light) {{
+  :root, :root[data-theme="dark"] {{
+    color-scheme: light !important;
+    --fg: #1f2328 !important;
+    --bg: #ffffff !important;
+    --muted: #59636e !important;
+    --border: #d1d9e0 !important;
+    --border-muted: #d1d9e0b3 !important;
+    --code-bg: #818b981f !important;
+    --pre-bg: #f6f8fa !important;
+    --link: #0969da !important;
+  }}
+  body, .markdown-body {{
+    color: var(--fg) !important;
+    background-color: var(--bg) !important;
+  }}
+  pre.chroma {{
+    background-color: #f6f8fa !important;
+    color: #1f2328 !important;
+    border-color: rgba(128, 128, 128, 0.18) !important;
+  }}
+}}
+
+/* Adaptive Dark mode overrides when e-reader switches to Night / Dark theme */
+@media (prefers-color-scheme: dark) {{
+  :root {{
+    color-scheme: dark !important;
+    --fg: #f0f6fc !important;
+    --bg: #0d1117 !important;
+    --muted: #9198a1 !important;
+    --border: #3d444d !important;
+    --border-muted: #3d444db3 !important;
+    --code-bg: #656c7633 !important;
+    --pre-bg: #141619 !important;
+    --link: #4493f8 !important;
+  }}
+  body, .markdown-body {{
+    color: var(--fg) !important;
+    background-color: var(--bg) !important;
+  }}
+  pre.chroma {{
+    background-color: #141619 !important;
+    color: #c5c8c6 !important;
+    border-color: rgba(255, 255, 255, 0.12) !important;
+  }}
+{dark_rules}
+}}
+
+/* Apple Books Night Mode internal selector hooks */
+:root[__ibooks_internal_theme*="Night"] pre.chroma {{
+  background-color: #141619 !important;
+  color: #c5c8c6 !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}}
+:root[__ibooks_internal_theme*="Night"] {{
+{dark_rules}
+}}
+
+{doc_css}
+"#
+    )
+}
+
+/// Augments CSS syntax declarations with `-webkit-text-fill-color` and `!important`
+/// so Apple Books does not strip or wash out code colors in Dark mode.
+fn epub_dark_rules(css: &str) -> String {
+    static COLOR_DECL_RE: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"(?m)(^|[\s;])color:\s*(#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3})")
+            .expect("valid color regex")
+    });
+    COLOR_DECL_RE
+        .replace_all(css, |caps: &Captures<'_>| {
+            let pfx = &caps[1];
+            let col = &caps[2];
+            format!("{pfx}color: {col} !important;\n -webkit-text-fill-color: {col} !important")
+        })
+        .into_owned()
 }
