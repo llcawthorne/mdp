@@ -57,6 +57,25 @@ fn parse_content_highlights_code() {
         ex_html.contains("sy-elixir"),
         "Elixir code block should be highlighted with sy-elixir classes, got:\n{ex_html}"
     );
+
+    // Verify newly supported languages
+    for (lang, code, expected_class) in [
+        ("swift", "let greeting = \"Hello\"\n", "sy-swift"),
+        ("elm", "type Msg = Increment | Decrement\n", "sy-elm"),
+        ("purescript", "module Main where\n", "sy-purescript"),
+        ("dockerfile", "FROM rust:latest\n", "sy-dockerfile"),
+        ("typescript", "const x: number = 42;\n", "chroma"),
+        ("shell", "curl -s https://example.com\n", "chroma"),
+    ] {
+        let input = format!("```{lang}\n{code}```\n");
+        let res = parse_content(input.as_bytes(), Path::new(INPUT_FILE), &Options::default())
+            .unwrap_or_else(|e| panic!("failed to parse {lang}: {e}"));
+        let html = String::from_utf8_lossy(&res);
+        assert!(
+            html.contains(expected_class),
+            "{lang} code block should contain {expected_class}, got:\n{html}"
+        );
+    }
 }
 
 #[test]

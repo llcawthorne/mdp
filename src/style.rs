@@ -39,6 +39,18 @@ const KOTLIN_SYNTAX: &str = include_str!("../assets/Kotlin.sublime-syntax");
 /// Embedded Elixir syntax definition (`assets/Elixir.sublime-syntax`).
 const ELIXIR_SYNTAX: &str = include_str!("../assets/Elixir.sublime-syntax");
 
+/// Embedded Swift syntax definition (`assets/Swift.sublime-syntax`).
+const SWIFT_SYNTAX: &str = include_str!("../assets/Swift.sublime-syntax");
+
+/// Embedded Elm syntax definition (`assets/Elm.sublime-syntax`).
+const ELM_SYNTAX: &str = include_str!("../assets/Elm.sublime-syntax");
+
+/// Embedded PureScript syntax definition (`assets/PureScript.sublime-syntax`).
+const PURESCRIPT_SYNTAX: &str = include_str!("../assets/PureScript.sublime-syntax");
+
+/// Embedded Dockerfile syntax definition (`assets/Dockerfile.sublime-syntax`).
+const DOCKERFILE_SYNTAX: &str = include_str!("../assets/Dockerfile.sublime-syntax");
+
 /// Embedded GitHub Dark `.tmTheme` (`assets/GitHub-Dark.tmTheme`).
 const GITHUB_DARK_THEME: &str = include_str!("../assets/GitHub-Dark.tmTheme");
 
@@ -72,7 +84,7 @@ const HEARTH_EMBER_LIGHT_THEME: &str = include_str!("../assets/hearth_ember_ligh
 /// Embedded One Dark Pro Night Flat `.tmTheme` (`assets/onedark_night_flat.tmTheme`).
 const ONEDARK_NIGHT_FLAT_THEME: &str = include_str!("../assets/onedark_night_flat.tmTheme");
 
-/// Lazily initialized `syntect` syntax definitions, including default syntaxes, TOML, Kotlin, and Elixir.
+/// Lazily initialized `syntect` syntax definitions, including default syntaxes, TOML, Kotlin, Elixir, Swift, Elm, PureScript, and Dockerfile.
 static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(|| {
     let mut builder = SyntaxSet::load_defaults_newlines().into_builder();
     if let Ok(toml_def) = SyntaxDefinition::load_from_str(TOML_SYNTAX, true, Some("toml")) {
@@ -83,6 +95,18 @@ static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(|| {
     }
     if let Ok(ex_def) = SyntaxDefinition::load_from_str(ELIXIR_SYNTAX, true, Some("elixir")) {
         builder.add(ex_def);
+    }
+    if let Ok(sw_def) = SyntaxDefinition::load_from_str(SWIFT_SYNTAX, true, Some("swift")) {
+        builder.add(sw_def);
+    }
+    if let Ok(elm_def) = SyntaxDefinition::load_from_str(ELM_SYNTAX, true, Some("elm")) {
+        builder.add(elm_def);
+    }
+    if let Ok(purs_def) = SyntaxDefinition::load_from_str(PURESCRIPT_SYNTAX, true, Some("purescript")) {
+        builder.add(purs_def);
+    }
+    if let Ok(df_def) = SyntaxDefinition::load_from_str(DOCKERFILE_SYNTAX, true, Some("dockerfile")) {
+        builder.add(df_def);
     }
     builder.build()
 });
@@ -479,8 +503,18 @@ pub fn highlight_code(code: &str, lang: &str) -> String {
         );
     }
 
+    let lang_lower = lang.to_ascii_lowercase();
+    let token = match lang_lower.as_str() {
+        "typescript" | "ts" | "tsx" => "js",
+        "shell" | "console" | "zsh" => "bash",
+        "proto" => "protobuf",
+        "dockerfile" => "dockerfile",
+        other => other,
+    };
+
     let Some(syntax) = SYNTAX_SET
-        .find_syntax_by_token(lang)
+        .find_syntax_by_token(token)
+        .or_else(|| SYNTAX_SET.find_syntax_by_token(lang))
         .filter(|s| s.name != "Plain Text")
     else {
         return format!(
