@@ -21,7 +21,7 @@ emojis = "0.6"
 futures-util = "0.3.33"
 handlebars = "6.4.3"
 mime_guess = "2"
-opener = "0.8.5"
+opener = "0.9.0"
 percent-encoding = "2"
 pulldown-cmark = { version = "0.13.5", default-features = false, features = ["html"] }
 regex = "1.13.1"
