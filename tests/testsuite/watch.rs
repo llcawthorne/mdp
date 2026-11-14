@@ -33,7 +33,10 @@ async fn spawn_test_watcher() -> (tempfile::TempDir, PathBuf, std::net::SocketAd
 async fn http_get(addr: std::net::SocketAddr, path: &str) -> (u16, String) {
     let mut stream = TcpStream::connect(addr).await.expect("connect");
     let req = format!("GET {path} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n\r\n");
-    stream.write_all(req.as_bytes()).await.expect("write request");
+    stream
+        .write_all(req.as_bytes())
+        .await
+        .expect("write request");
 
     let mut raw = Vec::new();
     stream.read_to_end(&mut raw).await.expect("read response");
@@ -113,12 +116,14 @@ async fn watch_serves_linked_files_and_blocks_traversal() {
 /// promptly once `file` is modified.
 async fn expect_reload(addr: std::net::SocketAddr, url_path: &str, file: &PathBuf) {
     let mut stream = TcpStream::connect(addr).await.expect("connect SSE");
-    let encoded_path: String =
-        url::form_urlencoded::byte_serialize(url_path.as_bytes()).collect();
+    let encoded_path: String = url::form_urlencoded::byte_serialize(url_path.as_bytes()).collect();
     let req = format!(
         "GET /events?path={encoded_path} HTTP/1.1\r\nHost: {addr}\r\nAccept: text/event-stream\r\n\r\n"
     );
-    stream.write_all(req.as_bytes()).await.expect("write SSE request");
+    stream
+        .write_all(req.as_bytes())
+        .await
+        .expect("write SSE request");
 
     let mut reader = BufReader::new(stream);
     let mut line = String::new();
@@ -135,7 +140,10 @@ async fn expect_reload(addr: std::net::SocketAddr, url_path: &str, file: &PathBu
     // Read until we find the `: connected` comment line (skipping chunk-size lines if chunked)
     loop {
         line.clear();
-        reader.read_line(&mut line).await.expect("read SSE connected");
+        reader
+            .read_line(&mut line)
+            .await
+            .expect("read SSE connected");
         let trimmed = line.trim();
         if trimmed == ": connected" {
             break;

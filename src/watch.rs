@@ -122,8 +122,7 @@ impl Watcher {
 
     /// Reads, renders, and injects [`RELOAD_SCRIPT`] into the Markdown file at `path`.
     pub fn render(&self, path: &Path) -> Result<Vec<u8>> {
-        let input = fs::read(path)
-            .with_context(|| format!("failed to read {}", path.display()))?;
+        let input = fs::read(path).with_context(|| format!("failed to read {}", path.display()))?;
         let page = parse_content(&input, path, &self.opts)?;
         Ok(inject_script(&page))
     }
@@ -219,8 +218,9 @@ async fn serve_file(State(watcher): State<Arc<Watcher>>, uri: Uri) -> Response {
                     StatusCode::OK,
                     [(
                         header::CONTENT_TYPE,
-                        HeaderValue::from_str(mime.as_ref())
-                            .unwrap_or_else(|_| HeaderValue::from_static("application/octet-stream")),
+                        HeaderValue::from_str(mime.as_ref()).unwrap_or_else(|_| {
+                            HeaderValue::from_static("application/octet-stream")
+                        }),
                     )],
                     bytes,
                 )

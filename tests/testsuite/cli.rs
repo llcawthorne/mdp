@@ -15,8 +15,8 @@ const INPUT_FILE: &str = "testdata/test1.md";
 #[test]
 fn parse_content_highlights_code() {
     let input = b"```go\nfunc main() {}\n```\n";
-    let result = parse_content(input, Path::new(INPUT_FILE), &Options::default())
-        .expect("parse_content");
+    let result =
+        parse_content(input, Path::new(INPUT_FILE), &Options::default()).expect("parse_content");
     let html = String::from_utf8_lossy(&result);
 
     for want in [
@@ -33,8 +33,9 @@ fn parse_content_highlights_code() {
         .expect("parse toml content");
     let toml_html = String::from_utf8_lossy(&toml_res);
     assert!(
-        toml_html.contains(r#"<span class="sy-entity sy-name sy-section sy-table sy-toml">dependencies</span>"#)
-            || toml_html.contains("sy-toml"),
+        toml_html.contains(
+            r#"<span class="sy-entity sy-name sy-section sy-table sy-toml">dependencies</span>"#
+        ) || toml_html.contains("sy-toml"),
         "TOML code block should be highlighted with sy-toml classes, got:\n{toml_html}"
     );
 
@@ -92,7 +93,11 @@ fn parse_content_title() {
             "## Only a subheading\n",
             "notes.md",
         ),
-        ("no headings falls back to file name", "just text\n", "notes.md"),
+        (
+            "no headings falls back to file name",
+            "just text\n",
+            "notes.md",
+        ),
         ("title is escaped", "# a < b & c\n", "a &lt; b &amp; c"),
     ];
 
@@ -136,15 +141,25 @@ fn parse_content_inlines_local_images() {
 #[test]
 fn parse_content_theme() {
     const DARK_PAGE: &str = r#":root[data-theme="dark"] {"#;
-    const LIGHT_CODE: &str =
-        r#":root[data-theme="light"][data-code-style="github"] .chroma { background-color: var(--pre-bg); }"#;
-    const DARK_CODE: &str =
-        r#":root[data-theme="dark"][data-code-style="github"] .chroma { background-color: #24292e;"#;
+    const LIGHT_CODE: &str = r#":root[data-theme="light"][data-code-style="github"] .chroma { background-color: var(--pre-bg); }"#;
+    const DARK_CODE: &str = r#":root[data-theme="dark"][data-code-style="github"] .chroma { background-color: #24292e;"#;
 
     let cases = [
-        (Theme::Auto, r#"data-theme="light""#, r#"let choice = "auto";"#),
-        (Theme::Light, r#"data-theme="light""#, r#"let choice = "light";"#),
-        (Theme::Dark, r#"data-theme="dark""#, r#"let choice = "dark";"#),
+        (
+            Theme::Auto,
+            r#"data-theme="light""#,
+            r#"let choice = "auto";"#,
+        ),
+        (
+            Theme::Light,
+            r#"data-theme="light""#,
+            r#"let choice = "light";"#,
+        ),
+        (
+            Theme::Dark,
+            r#"data-theme="dark""#,
+            r#"let choice = "dark";"#,
+        ),
     ];
 
     for (theme, attr, starting) in cases {
@@ -155,7 +170,13 @@ fn parse_content_theme() {
         let result = parse_content(b"# Hi\n", Path::new(INPUT_FILE), &opts).expect("parse_content");
         let html = String::from_utf8_lossy(&result);
         let root_open = format!("<html {attr}");
-        for s in [root_open.as_str(), starting, DARK_PAGE, LIGHT_CODE, DARK_CODE] {
+        for s in [
+            root_open.as_str(),
+            starting,
+            DARK_PAGE,
+            LIGHT_CODE,
+            DARK_CODE,
+        ] {
             assert!(html.contains(s), "theme {theme}: missing {s:?}");
         }
     }
@@ -185,8 +206,11 @@ fn parse_args_flags_and_validation() {
     );
 
     // Short flags & style flag
-    let got = parse_args(["--skip", "-w", "-d", "-t", "-s", "railscasts", "a.md"], &mut stderr)
-        .expect("flags");
+    let got = parse_args(
+        ["--skip", "-w", "-d", "-t", "-s", "railscasts", "a.md"],
+        &mut stderr,
+    )
+    .expect("flags");
     assert_eq!(
         got,
         Config {
@@ -237,8 +261,7 @@ fn parse_args_flags_and_validation() {
     assert!(got.epub);
     assert!(!got.pdf);
 
-    let got =
-        parse_args(["--output", "book-name.EPUB", "a.md"], &mut stderr).expect("epub output");
+    let got = parse_args(["--output", "book-name.EPUB", "a.md"], &mut stderr).expect("epub output");
     assert!(got.epub);
     assert!(!got.pdf);
     assert_eq!(got.output, Some(PathBuf::from("book-name.EPUB")));
@@ -310,7 +333,14 @@ fn code_style_menu() {
     assert!(html.contains(r#" data-code-style="custom""#));
 
     // Curated styles have their CSS rules embedded
-    for id in ["github", "solarized", "ocean", "darcula", "railscasts", "mocha"] {
+    for id in [
+        "github",
+        "solarized",
+        "ocean",
+        "darcula",
+        "railscasts",
+        "mocha",
+    ] {
         for th in ["light", "dark"] {
             let needle = format!(r#":root[data-theme="{th}"][data-code-style="{id}"] .chroma"#);
             assert!(html.contains(&needle), "missing {needle}");
@@ -340,28 +370,44 @@ fn parse_content_toc() {
             name: "lone h1 is the title, so the list starts at h2",
             input: "# Title\n\n## One\n\n### One A\n\n## Two\n",
             toc: false,
-            want: &[r#"<nav class="toc""#, r##"href="#one""##, r##"href="#one-a""##, r##"href="#two""##],
+            want: &[
+                r#"<nav class="toc""#,
+                r##"href="#one""##,
+                r##"href="#one-a""##,
+                r##"href="#two""##,
+            ],
             not_want: &[r##"href="#title""##],
         },
         TocCase {
             name: "several h1s are all listed",
             input: "# Part 1\n\n## A\n\n# Part 2\n",
             toc: false,
-            want: &[r##"href="#part-1""##, r##"href="#a""##, r##"href="#part-2""##],
+            want: &[
+                r##"href="#part-1""##,
+                r##"href="#a""##,
+                r##"href="#part-2""##,
+            ],
             not_want: &[],
         },
         TocCase {
             name: "closed unless asked for",
             input: "# Title\n\n## One\n",
             toc: false,
-            want: &[r#"<nav class="toc""#, r#"id="toc-toggle""#, r#"aria-expanded="false""#],
+            want: &[
+                r#"<nav class="toc""#,
+                r#"id="toc-toggle""#,
+                r#"aria-expanded="false""#,
+            ],
             not_want: &[r#"class="toc-open""#],
         },
         TocCase {
             name: "--toc opens it",
             input: "# Title\n\n## One\n",
             toc: true,
-            want: &[r#" data-code-style="github" class="toc-open">"#, r#"aria-expanded="true""#],
+            want: &[
+                r#" data-code-style="github" class="toc-open">"#,
+                r#"aria-expanded="true""#,
+            ],
             not_want: &[],
         },
         TocCase {
@@ -385,7 +431,11 @@ fn parse_content_toc() {
             assert!(html.contains(w), "case {}: missing {w:?}", c.name);
         }
         for &nw in c.not_want {
-            assert!(!html.contains(nw), "case {}: unexpectedly has {nw:?}", c.name);
+            assert!(
+                !html.contains(nw),
+                "case {}: unexpectedly has {nw:?}",
+                c.name
+            );
         }
     }
 }
@@ -416,7 +466,10 @@ fn run_writes_temp_and_explicit_output_file() {
         ..Config::default()
     };
     run(&cfg, &mut out).expect("run explicit output");
-    assert_eq!(String::from_utf8(out).unwrap().trim(), out_name.to_string_lossy());
+    assert_eq!(
+        String::from_utf8(out).unwrap().trim(),
+        out_name.to_string_lossy()
+    );
     let page = fs::read_to_string(&out_name).expect("read notes.html");
     assert!(page.contains("Test Markdown File"));
 }
@@ -527,7 +580,9 @@ fn run_makes_epub() {
 
     let content = read_entry(&mut archive, "EPUB/content.xhtml");
     let expected_theme = mdp::epub::epub_theme(Theme::Auto);
-    assert!(content.contains(&format!(r#"data-theme="{expected_theme}" data-code-style="github">"#)));
+    assert!(content.contains(&format!(
+        r#"data-theme="{expected_theme}" data-code-style="github">"#
+    )));
     assert!(content.contains("Book Title"));
     assert!(
         content.contains("<hr />"),

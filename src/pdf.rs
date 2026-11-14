@@ -49,8 +49,12 @@ pub fn print_pdf(page: &[u8], pdf_name: &Path) -> Result<()> {
     let html_path = temp_dir.path().join("page.html");
     fs::write(&html_path, page).context("failed to write temporary HTML file for PDF")?;
 
-    let page_url = Url::from_file_path(&html_path)
-        .map_err(|()| anyhow::anyhow!("failed to construct file:// URL for {}", html_path.display()))?;
+    let page_url = Url::from_file_path(&html_path).map_err(|()| {
+        anyhow::anyhow!(
+            "failed to construct file:// URL for {}",
+            html_path.display()
+        )
+    })?;
     let temp_pdf = temp_dir.path().join("page.pdf");
     let profile_dir = temp_dir.path().join("profile");
 

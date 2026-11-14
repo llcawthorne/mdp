@@ -99,10 +99,13 @@ static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(|| {
     if let Ok(elm_def) = SyntaxDefinition::load_from_str(ELM_SYNTAX, true, Some("elm")) {
         builder.add(elm_def);
     }
-    if let Ok(purs_def) = SyntaxDefinition::load_from_str(PURESCRIPT_SYNTAX, true, Some("purescript")) {
+    if let Ok(purs_def) =
+        SyntaxDefinition::load_from_str(PURESCRIPT_SYNTAX, true, Some("purescript"))
+    {
         builder.add(purs_def);
     }
-    if let Ok(df_def) = SyntaxDefinition::load_from_str(DOCKERFILE_SYNTAX, true, Some("dockerfile")) {
+    if let Ok(df_def) = SyntaxDefinition::load_from_str(DOCKERFILE_SYNTAX, true, Some("dockerfile"))
+    {
         builder.add(df_def);
     }
     builder.build()
@@ -531,5 +534,3 @@ pub fn highlight_code(code: &str, lang: &str) -> String {
     let html = generator.finalize();
     format!("<pre class=\"chroma\"><code>{html}</code></pre>\n")
 }
-
-

@@ -11,7 +11,10 @@ use std::path::Path;
 fn math_rendering() {
     let cases = [
         ("$x^2$", r#"<span class="math math-inline">x^2</span>"#),
-        ("$`a $ b`$", r#"<span class="math math-inline">a $ b</span>"#),
+        (
+            "$`a $ b`$",
+            r#"<span class="math math-inline">a $ b</span>"#,
+        ),
         ("$$x$$", r#"<span class="math math-display">x</span>"#),
         ("$$\nx\n$$", r#"<span class="math math-display">x</span>"#),
         ("$a<b$", r#"<span class="math math-inline">a&lt;b</span>"#),
@@ -45,12 +48,7 @@ fn scripts_only_when_needed() {
 
     let cases: &[(&str, &str, &[&str], &[&str])] = &[
         ("plain", "# Hi\n", &[], &[KATEX, MERMAID]),
-        (
-            "math",
-            "$x$\n",
-            &[KATEX, "font/woff2;base64,"],
-            &[MERMAID],
-        ),
+        ("math", "$x$\n", &[KATEX, "font/woff2;base64,"], &[MERMAID]),
         ("math block", "```math\nx\n```\n", &[KATEX], &[MERMAID]),
         (
             "diagram",
@@ -74,7 +72,10 @@ fn scripts_only_when_needed() {
             assert!(text.contains(w), "case {name}: missing {w:?}");
         }
         for &nw in not_want {
-            assert!(!text.contains(nw), "case {name}: unexpectedly contained {nw:?}");
+            assert!(
+                !text.contains(nw),
+                "case {name}: unexpectedly contained {nw:?}"
+            );
         }
     }
 }
@@ -103,10 +104,7 @@ fn fix_links_rewrites_and_embeds() {
     let abs = format!("file://{}", dir.to_string_lossy().replace('\\', "/"));
     let parent_abs = format!(
         "file://{}",
-        dir.parent()
-            .unwrap()
-            .to_string_lossy()
-            .replace('\\', "/")
+        dir.parent().unwrap().to_string_lossy().replace('\\', "/")
     );
 
     let cases = [

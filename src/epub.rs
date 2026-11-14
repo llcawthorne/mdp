@@ -222,12 +222,7 @@ fn render_nav_xhtml(title: &str, headings: &[HeadingEntry]) -> String {
 }
 
 /// Generates the `EPUB/content.xhtml` content document wrapping `xhtml_body`.
-fn render_content_xhtml(
-    title: &str,
-    theme: Theme,
-    code_style: &str,
-    xhtml_body: &str,
-) -> String {
+fn render_content_xhtml(title: &str, theme: Theme, code_style: &str, xhtml_body: &str) -> String {
     let escaped_title = escape_html(title);
     let escaped_style = escape_html(code_style);
     let theme_str = match theme {

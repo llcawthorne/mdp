@@ -24,7 +24,10 @@ use ammonia::Builder as AmmoniaBuilder;
 use anyhow::{Context, Result};
 use handlebars::Handlebars;
 use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
-use pulldown_cmark::{Alignment, CodeBlockKind, CowStr, Event, HeadingLevel, Options as CmarkOptions, Parser, Tag, TagEnd};
+use pulldown_cmark::{
+    Alignment, CodeBlockKind, CowStr, Event, HeadingLevel, Options as CmarkOptions, Parser, Tag,
+    TagEnd,
+};
 use regex::Regex;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -81,9 +84,7 @@ pub(crate) struct RenderedDocument {
 /// Lazily initialized [`ammonia::Builder`] configured to match GitHub's allowed HTML subset.
 static SANITIZER: LazyLock<AmmoniaBuilder<'static>> = LazyLock::new(|| {
     let mut builder = AmmoniaBuilder::default();
-    builder.add_tags([
-        "kbd", "details", "summary", "picture", "source", "input",
-    ]);
+    builder.add_tags(["kbd", "details", "summary", "picture", "source", "input"]);
     builder.add_tag_attributes("pre", ["class", "style"]);
     builder.add_tag_attributes("code", ["class", "style"]);
     builder.add_tag_attributes("span", ["class", "style"]);
@@ -109,8 +110,9 @@ static SANITIZER: LazyLock<AmmoniaBuilder<'static>> = LazyLock::new(|| {
 });
 
 /// Regex matching `<a>` tags whose disallowed `href` (`javascript:`, `data:`) was stripped by `ammonia`.
-static STRIPPED_LINK_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r#"<a rel="nofollow">([^<]*)</a>"#).expect("valid stripped link regex"));
+static STRIPPED_LINK_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"<a rel="nofollow">([^<]*)</a>"#).expect("valid stripped link regex")
+});
 
 /// Lazily compiled [`Handlebars`] registry holding the default page template.
 static HANDLEBARS: LazyLock<Handlebars<'static>> = LazyLock::new(|| {
@@ -351,7 +353,10 @@ fn render_footnotes(
         );
         let trimmed = def_html.trim_end();
         if let Some(before_p) = trimmed.strip_suffix("</p>") {
-            let _ = write!(html, "<li id=\"fn:{num}\">\n{before_p}{backref}</p>\n</li>\n");
+            let _ = write!(
+                html,
+                "<li id=\"fn:{num}\">\n{before_p}{backref}</p>\n</li>\n"
+            );
         } else {
             let _ = write!(html, "<li id=\"fn:{num}\">\n{def_html}{backref}\n</li>\n");
         }
@@ -423,10 +428,7 @@ fn format_inline_math<'a>(
     } else {
         *uses_math = true;
         let trimmed = m.trim();
-        let inner = if trimmed.starts_with('`')
-            && trimmed.ends_with('`')
-            && trimmed.len() >= 2
-        {
+        let inner = if trimmed.starts_with('`') && trimmed.ends_with('`') && trimmed.len() >= 2 {
             trimmed[1..trimmed.len() - 1].trim()
         } else {
             trimmed
@@ -484,10 +486,9 @@ fn parse_markdown_events(body_md: &str) -> Vec<(Event<'_>, std::ops::Range<usize
     cmark_opts.insert(CmarkOptions::ENABLE_GFM);
     cmark_opts.insert(CmarkOptions::ENABLE_MATH);
 
-    let raw_events: Vec<(Event<'_>, std::ops::Range<usize>)> =
-        Parser::new_ext(body_md, cmark_opts)
-            .into_offset_iter()
-            .collect();
+    let raw_events: Vec<(Event<'_>, std::ops::Range<usize>)> = Parser::new_ext(body_md, cmark_opts)
+        .into_offset_iter()
+        .collect();
     coalesce_backtick_math(body_md, raw_events)
 }
 
@@ -564,9 +565,14 @@ fn render_markdown_body(body_md: &str, front_matter_html: &str) -> RenderedBody 
         if let Some((ref lang, ref mut code_buf)) = in_code_block {
             match event {
                 Event::End(TagEnd::CodeBlock) => {
-                    let block = finish_code_block(lang, code_buf, &mut uses_math, &mut uses_mermaid);
+                    let block =
+                        finish_code_block(lang, code_buf, &mut uses_math, &mut uses_mermaid);
                     in_code_block = None;
-                    push_event(&mut out_events, &mut in_footnote_def, Event::Html(CowStr::from(block)));
+                    push_event(
+                        &mut out_events,
+                        &mut in_footnote_def,
+                        Event::Html(CowStr::from(block)),
+                    );
                 }
                 Event::Text(t) => code_buf.push_str(&t),
                 _ => {}
@@ -577,9 +583,20 @@ fn render_markdown_body(body_md: &str, front_matter_html: &str) -> RenderedBody 
         if let Some((level, ref mut h_events, ref mut full_text, ref mut toc_text)) = in_heading {
             if let Event::End(TagEnd::Heading(_)) = event {
                 let events = std::mem::take(h_events);
-                let html = finish_heading(level, events, full_text, toc_text, &mut seen_ids, &mut headings);
+                let html = finish_heading(
+                    level,
+                    events,
+                    full_text,
+                    toc_text,
+                    &mut seen_ids,
+                    &mut headings,
+                );
                 in_heading = None;
-                push_event(&mut out_events, &mut in_footnote_def, Event::Html(CowStr::from(html)));
+                push_event(
+                    &mut out_events,
+                    &mut in_footnote_def,
+                    Event::Html(CowStr::from(html)),
+                );
             } else {
                 handle_heading_inner_event(h_events, full_text, toc_text, &mut uses_math, event);
             }
@@ -615,7 +632,11 @@ fn render_markdown_body(body_md: &str, front_matter_html: &str) -> RenderedBody 
                 let html = format!(
                     "<blockquote class=\"markdown-alert markdown-alert-{cls}\"><p class=\"markdown-alert-title\">{title}</p>\n"
                 );
-                push_event(&mut out_events, &mut in_footnote_def, Event::Html(CowStr::from(html)));
+                push_event(
+                    &mut out_events,
+                    &mut in_footnote_def,
+                    Event::Html(CowStr::from(html)),
+                );
             }
             Event::End(TagEnd::BlockQuote(Some(_))) => {
                 push_event(
@@ -626,7 +647,11 @@ fn render_markdown_body(body_md: &str, front_matter_html: &str) -> RenderedBody 
             }
             Event::FootnoteReference(name) => {
                 let html = format_footnote_ref(&name, &mut footnote_numbers, &mut footnote_order);
-                push_event(&mut out_events, &mut in_footnote_def, Event::Html(CowStr::from(html)));
+                push_event(
+                    &mut out_events,
+                    &mut in_footnote_def,
+                    Event::Html(CowStr::from(html)),
+                );
             }
             Event::Start(Tag::FootnoteDefinition(name)) => {
                 in_footnote_def = Some((name.to_string(), Vec::new()));
@@ -768,10 +793,7 @@ fn render_toc(headings: &[HeadingEntry]) -> Option<String> {
     let h1_count = headings.iter().filter(|h| h.level == 1).count();
     let min_level = if h1_count == 1 { 2 } else { 1 };
 
-    let filtered: Vec<&HeadingEntry> = headings
-        .iter()
-        .filter(|h| h.level >= min_level)
-        .collect();
+    let filtered: Vec<&HeadingEntry> = headings.iter().filter(|h| h.level >= min_level).collect();
     if filtered.is_empty() {
         return None;
     }

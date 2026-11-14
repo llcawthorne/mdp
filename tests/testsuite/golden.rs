@@ -18,7 +18,10 @@ fn golden_files() {
         .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("md"))
         .collect();
     inputs.sort();
-    assert!(!inputs.is_empty(), "no golden inputs found in testdata/golden");
+    assert!(
+        !inputs.is_empty(),
+        "no golden inputs found in testdata/golden"
+    );
 
     let update = env::var_os("MDP_UPDATE_GOLDEN").is_some();
 
