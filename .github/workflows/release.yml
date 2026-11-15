@@ -12,8 +12,24 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ! gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$GITHUB_REF_NAME" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$GITHUB_REF_NAME" \
+              --generate-notes
+          fi
+
   build:
     name: Build (${{ matrix.target }})
+    needs: create-release
     strategy:
       fail-fast: false
       matrix:
@@ -39,4 +55,4 @@ jobs:
           target: ${{ matrix.target }}
           tar: all
           zip: windows
-          args: --locked
+          locked: true
