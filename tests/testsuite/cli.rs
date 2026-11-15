@@ -546,7 +546,7 @@ fn run_makes_epub() {
     // Per the EPUB OCF spec, entry 0 must be `mimetype`, stored uncompressed
     {
         let mut first = archive.by_index(0).expect("first ZIP entry");
-        assert_eq!(first.name(), "mimetype");
+        assert_eq!(first.name().expect("valid entry name"), "mimetype");
         assert_eq!(first.compression(), CompressionMethod::Stored);
         let mut mime = String::new();
         first.read_to_string(&mut mime).expect("read mimetype");

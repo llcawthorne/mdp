@@ -12,7 +12,7 @@ missing_docs = "warn"
 rust_2018_idioms = "warn"
 
 [dependencies]
-ammonia = "4"
+ammonia = "4.2.5"
 anyhow = "1.0.104"
 axum = "0.8.9"
 base64 = "0.22"
@@ -31,7 +31,7 @@ syntect = { version = "5.2", default-features = false, features = ["default-fanc
 tempfile = "3.27.0"
 tokio = { version = "1.53.3", features = ["macros", "rt-multi-thread", "net", "time", "sync", "fs", "io-util"] }
 url = "2.5"
-zip = { version = "2", default-features = false, features = ["deflate"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
 
 [[test]]
 name = "testsuite"

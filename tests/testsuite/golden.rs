@@ -34,7 +34,7 @@ fn golden_files() {
         };
         let page = parse_content(&md, &input, &opts)
             .unwrap_or_else(|e| panic!("render {}: {e}", input.display()));
-        let got = markdown_parts(&page);
+        let got = markdown_parts(&page).replace("\r\n", "\n");
 
         let golden_file = input.with_extension("html");
         if update {
@@ -43,12 +43,14 @@ fn golden_files() {
             continue;
         }
 
-        let want = fs::read_to_string(&golden_file).unwrap_or_else(|e| {
-            panic!(
-                "read {} ({e}); run with MDP_UPDATE_GOLDEN=1 to create it",
-                golden_file.display()
-            )
-        });
+        let want = fs::read_to_string(&golden_file)
+            .unwrap_or_else(|e| {
+                panic!(
+                    "read {} ({e}); run with MDP_UPDATE_GOLDEN=1 to create it",
+                    golden_file.display()
+                )
+            })
+            .replace("\r\n", "\n");
         if got != want {
             mismatches.push((input.display().to_string(), got, want));
         }
